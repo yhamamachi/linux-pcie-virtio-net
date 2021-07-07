@@ -36,6 +36,7 @@ r8a77951-salvator-xs-panel-aa104xd12-dtbs := r8a77951-salvator-xs.dtb salvator-p
 dtb-$(CONFIG_ARCH_R8A77951) += r8a77951-salvator-xs-panel-aa104xd12.dtb
 dtb-$(CONFIG_ARCH_R8A77951) += r8a77951-ulcb.dtb
 dtb-$(CONFIG_ARCH_R8A77951) += r8a77951-ulcb-kf.dtb
+dtb-$(CONFIG_ARCH_R8A77951) += r8a77951-ulcb-ccpf-sk.dtb
 
 dtb-$(CONFIG_ARCH_R8A77960) += r8a77960-salvator-x.dtb
 r8a77960-salvator-x-panel-aa104xd12-dtbs := r8a77960-salvator-x.dtb salvator-panel-aa104xd12.dtbo

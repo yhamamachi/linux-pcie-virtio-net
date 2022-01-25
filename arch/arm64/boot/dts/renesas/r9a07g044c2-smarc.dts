@@ -19,46 +19,55 @@
 
 &canfd {
 	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-names;
 	status = "disabled";
 };
 
 &ehci0 {
 	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-names;
 	status = "disabled";
 };
 
 &ehci1 {
 	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-names;
 	status = "disabled";
 };
 
 &hsusb {
 	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-names;
 	status = "disabled";
 };
 
 &i2c0 {
 	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-names;
 	status = "disabled";
 };
 
 &i2c1 {
 	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-names;
 	status = "disabled";
 };
 
 &i2c3 {
 	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-names;
 	status = "disabled";
 };
 
 &ohci0 {
 	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-names;
 	status = "disabled";
 };
 
 &ohci1 {
 	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-names;
 	status = "disabled";
 };
 
@@ -68,32 +77,38 @@
 
 &scif2 {
 	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-names;
 	status = "disabled";
 };
 
 &sdhi1 {
 	/delete-property/ pinctrl-0;
 	/delete-property/ pinctrl-1;
+	/delete-property/ pinctrl-names;
 	/delete-property/ vmmc-supply;
 	status = "disabled";
 };
 
 &spi1 {
 	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-names;
 	status = "disabled";
 };
 
 &ssi0 {
 	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-names;
 	status = "disabled";
 };
 
 &usb2_phy0 {
 	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-names;
 	status = "disabled";
 };
 
 &usb2_phy1 {
 	/delete-property/ pinctrl-0;
+	/delete-property/ pinctrl-names;
 	status = "disabled";
 };

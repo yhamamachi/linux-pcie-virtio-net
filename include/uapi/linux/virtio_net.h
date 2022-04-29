@@ -56,6 +56,7 @@
 #define VIRTIO_NET_F_MQ	22	/* Device supports Receive Flow
 					 * Steering */
 #define VIRTIO_NET_F_CTRL_MAC_ADDR 23	/* Set MAC address */
+#define VIRTIO_NET_F_ROCE	24	/* Device supports RoCE */
 #define VIRTIO_NET_F_NOTF_COAL	53	/* Device supports notifications coalescing */
 #define VIRTIO_NET_F_GUEST_USO4	54	/* Guest can handle USOv4 in. */
 #define VIRTIO_NET_F_GUEST_USO6	55	/* Guest can handle USOv6 in. */
@@ -116,6 +117,10 @@ struct virtio_net_config {
 	__le16 rss_max_indirection_table_length;
 	/* bitmask of supported VIRTIO_NET_RSS_HASH_ types */
 	__le32 supported_hash_types;
+	/* Maximum number of queue pairs for RDMA usage */
+	__le32 max_rdma_qps;
+	/* Maximum number of completion queues for RDMA usage */
+	__le32 max_rdma_cqs;
 } __attribute__((packed));
 
 /*
@@ -391,5 +396,416 @@ struct virtio_net_ctrl_coal_rx {
 };
 
 #define VIRTIO_NET_CTRL_NOTF_COAL_RX_SET		1
+
+#define VIRTIO_NET_CTRL_ROCE    6
+
+struct virtio_rdma_ack_query_device {
+#define VIRTIO_IB_DEVICE_RC_RNR_NAK_GEN    (1 << 0)
+	/* Capabilities mask */
+	__le64 device_cap_flags;
+	/* Largest contiguous block that can be registered */
+	__le64 max_mr_size;
+	/* Supported memory shift sizes */
+	__le64 page_size_cap;
+	/* Hardware version */
+	__le32 hw_ver;
+	/* Maximum number of outstanding Work Requests (WR) on Send Queue (SQ) and Receive Queue (RQ) */
+	__le32 max_qp_wr;
+	/* Maximum number of scatter/gather (s/g) elements per WR for SQ for non RDMA Read operations */
+	__le32 max_send_sge;
+	/* Maximum number of s/g elements per WR for RQ for non RDMA Read operations */
+	__le32 max_recv_sge;
+	/* Maximum number of s/g per WR for RDMA Read operations */
+	__le32 max_sge_rd;
+	/* Maximum size of Completion Queue (CQ) */
+	__le32 max_cqe;
+	/* Maximum number of Memory Regions (MR) */
+	__le32 max_mr;
+	/* Maximum number of Protection Domains (PD) */
+	__le32 max_pd;
+	/* Maximum number of RDMA Read perations that can be outstanding per Queue Pair (QP) */
+	__le32 max_qp_rd_atom;
+	/* Maximum depth per QP for initiation of RDMA Read operations */
+	__le32 max_qp_init_rd_atom;
+	/* Maximum number of Address Handles (AH) */
+	__le32 max_ah;
+	/* Local CA ack delay */
+	__u8 local_ca_ack_delay;
+	/* Padding */
+	__u8 padding[3];
+	/* Reserved for future */
+	__le32 reserved[14];
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_QUERY_DEVICE        0
+
+struct virtio_rdma_ack_query_port {
+	/* Length of source Global Identifier (GID) table */
+	__le32 gid_tbl_len;
+	/* Maximum message size */
+	__le32 max_msg_sz;
+	/* Reserved for future */
+	__le32 reserved[6];
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_QUERY_PORT        1
+
+struct virtio_rdma_cmd_create_cq {
+	/* Size of CQ */
+	__le32 cqe;
+};
+
+struct virtio_rdma_ack_create_cq {
+	/* The index of CQ */
+	__le32 cqn;
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_CREATE_CQ        2
+
+struct virtio_rdma_cmd_destroy_cq {
+	/* The index of CQ */
+	__le32 cqn;
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_DESTROY_CQ        3
+
+struct virtio_rdma_ack_create_pd {
+	/* The handle of PD */
+	__le32 pdn;
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_CREATE_PD        4
+
+struct virtio_rdma_cmd_destroy_pd {
+	/* The handle of PD */
+	__le32 pdn;
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_DESTROY_PD        5
+
+enum virtio_ib_access_flags {
+	VIRTIO_IB_ACCESS_LOCAL_WRITE = (1 << 0),
+	VIRTIO_IB_ACCESS_REMOTE_WRITE = (1 << 1),
+	VIRTIO_IB_ACCESS_REMOTE_READ = (1 << 2),
+};
+
+struct virtio_rdma_cmd_get_dma_mr {
+	/* The handle of PD which the MR associated with */
+	__le32 pdn;
+	/* MR's protection attributes, enum virtio_ib_access_flags */
+	__le32 access_flags;
+};
+
+struct virtio_rdma_ack_get_dma_mr {
+	/* The handle of MR */
+	__le32 mrn;
+	/* MR's local access key */
+	__le32 lkey;
+	/* MR's remote access key */
+	__le32 rkey;
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_GET_DMA_MR        6
+
+struct virtio_rdma_cmd_reg_user_mr {
+	/* The handle of PD which the MR associated with */
+	__le32 pdn;
+	/* MR's protection attributes, enum virtio_ib_access_flags */
+	__le32 access_flags;
+	/* Starting virtual address of MR */
+	__le64 virt_addr;
+	/* Length of MR */
+	__le64 length;
+	/* Size of the below page array */
+	__le32 npages;
+	/* Padding */
+	__le32 padding;
+	/* Array to store physical address of each page in MR */
+	__le64 pages[];
+};
+
+struct virtio_rdma_ack_reg_user_mr {
+	/* The handle of MR */
+	__le32 mrn;
+	/* MR's local access key */
+	__le32 lkey;
+	/* MR's remote access key */
+	__le32 rkey;
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_REG_USER_MR        7
+
+struct virtio_rdma_cmd_dereg_mr {
+	/* The handle of MR */
+	__le32 mrn;
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_DEREG_MR        8
+
+struct virtio_rdma_qp_cap {
+	/* Maximum number of outstanding WRs in SQ */
+	__le32 max_send_wr;
+	/* Maximum number of outstanding WRs in RQ */
+	__le32 max_recv_wr;
+	/* Maximum number of s/g elements per WR in SQ */
+	__le32 max_send_sge;
+	/* Maximum number of s/g elements per WR in RQ */
+	__le32 max_recv_sge;
+	/* Maximum number of data (bytes) that can be posted inline to SQ */
+	__le32 max_inline_data;
+	/* Padding */
+	__le32 padding;
+};
+
+struct virtio_rdma_cmd_create_qp {
+	/* The handle of PD which the QP associated with */
+	__le32 pdn;
+#define VIRTIO_IB_QPT_SMI    0
+#define VIRTIO_IB_QPT_GSI    1
+#define VIRTIO_IB_QPT_RC     2
+#define VIRTIO_IB_QPT_UC     3
+#define VIRTIO_IB_QPT_UD     4
+	/* QP's type */
+	__u8 qp_type;
+	/* If set, each WR submitted to the SQ generates a completion entry */
+	__u8 sq_sig_all;
+	/* Padding */
+	__u8 padding[2];
+	/* The index of CQ which the SQ associated with */
+	__le32 send_cqn;
+	/* The index of CQ which the RQ associated with */
+	__le32 recv_cqn;
+	/* QP's capabilities */
+	struct virtio_rdma_qp_cap cap;
+	/* Reserved for future */
+	__le32 reserved[4];
+};
+
+struct virtio_rdma_ack_create_qp {
+	/* The index of QP */
+	__le32 qpn;
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_CREATE_QP        9
+
+struct virtio_rdma_global_route {
+	/* Destination GID or MGID */
+	__u8 dgid[16];
+	/* Flow label */
+	__le32 flow_label;
+	/* Source GID index */
+	__u8 sgid_index;
+	/* Hop limit */
+	__u8 hop_limit;
+	/* Traffic class */
+	__u8 traffic_class;
+	/* padding */
+	__u8 padding;
+};
+
+struct virtio_rdma_ah_attr {
+	/* Global Routing Header (GRH) attributes */
+	struct virtio_rdma_global_route grh;
+	/* RoCE address handle attribute */
+	__u8 dmac[6];
+	/* Reserved for future */
+	__u8 reserved[10];
+};
+
+enum virtio_ib_qp_attr_mask {
+	VIRTIO_IB_QP_STATE = (1 << 0),
+	VIRTIO_IB_QP_CUR_STATE = (1 << 1),
+	VIRTIO_IB_QP_ACCESS_FLAGS = (1 << 2),
+	VIRTIO_IB_QP_QKEY = (1 << 3),
+	VIRTIO_IB_QP_AV = (1 << 4),
+	VIRTIO_IB_QP_PATH_MTU = (1 << 5),
+	VIRTIO_IB_QP_TIMEOUT = (1 << 6),
+	VIRTIO_IB_QP_RETRY_CNT = (1 << 7),
+	VIRTIO_IB_QP_RNR_RETRY = (1 << 8),
+	VIRTIO_IB_QP_RQ_PSN = (1 << 9),
+	VIRTIO_IB_QP_MAX_QP_RD_ATOMIC = (1 << 10),
+	VIRTIO_IB_QP_MIN_RNR_TIMER = (1 << 11),
+	VIRTIO_IB_QP_SQ_PSN = (1 << 12),
+	VIRTIO_IB_QP_MAX_DEST_RD_ATOMIC = (1 << 13),
+	VIRTIO_IB_QP_CAP = (1 << 14),
+	VIRTIO_IB_QP_DEST_QPN = (1 << 15),
+	VIRTIO_IB_QP_RATE_LIMIT = (1 << 16),
+};
+
+enum virtio_ib_qp_state {
+	VIRTIO_IB_QPS_RESET,
+	VIRTIO_IB_QPS_INIT,
+	VIRTIO_IB_QPS_RTR,
+	VIRTIO_IB_QPS_RTS,
+	VIRTIO_IB_QPS_SQD,
+	VIRTIO_IB_QPS_SQE,
+	VIRTIO_IB_QPS_ERR
+};
+
+enum virtio_ib_mtu {
+	VIRTIO_IB_MTU_256  = 1,
+	VIRTIO_IB_MTU_512  = 2,
+	VIRTIO_IB_MTU_1024 = 3,
+	VIRTIO_IB_MTU_2048 = 4,
+	VIRTIO_IB_MTU_4096 = 5
+};
+
+struct virtio_rdma_cmd_modify_qp {
+	/* The index of QP */
+	__le32 qpn;
+	/* The mask of attributes need to be modified, enum virtio_ib_qp_attr_mask */
+	__le32 attr_mask;
+	/* Move the QP to this state, enum virtio_ib_qp_state */
+	__u8 qp_state;
+	/* Current QP state, enum virtio_ib_qp_state */
+	__u8 cur_qp_state;
+	/* Path MTU (valid only for RC/UC QPs), enum virtio_ib_mtu */
+	__u8 path_mtu;
+	/* Number of outstanding RDMA Read operations on destination QP (valid only for RC QPs) */
+	__u8 max_rd_atomic;
+	/* Number of responder resources for handling incoming RDMA reads operations (valid only for RC QPs) */
+	__u8 max_dest_rd_atomic;
+	/* Minimum RNR (Receiver Not Ready) NAK timer (valid only for RC QPs) */
+	__u8 min_rnr_timer;
+	/* Local ack timeout (valid only for RC QPs) */
+	__u8 timeout;
+	/* Retry count (valid only for RC QPs) */
+	__u8 retry_cnt;
+	/* RNR retry (valid only for RC QPs) */
+	__u8 rnr_retry;
+	/* Padding */
+	__u8 padding[7];
+	/* Q_Key for the QP (valid only for UD QPs) */
+	__le32 qkey;
+	/* PSN for RQ (valid only for RC/UC QPs) */
+	__le32 rq_psn;
+	/* PSN for SQ */
+	__le32 sq_psn;
+	/* Destination QP number (valid only for RC/UC QPs) */
+	__le32 dest_qp_num;
+	/* Mask of enabled remote access operations (valid only for RC/UC QPs), enum virtio_ib_access_flags */
+	__le32 qp_access_flags;
+	/* Rate limit in kbps for packet pacing */
+	__le32 rate_limit;
+	/* QP capabilities */
+	struct virtio_rdma_qp_cap cap;
+	/* Address Vector (valid only for RC/UC QPs) */
+	struct virtio_rdma_ah_attr ah_attr;
+	/* Reserved for future */
+	__le32 reserved[4];
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_MODIFY_QP        10
+
+struct virtio_rdma_cmd_query_qp {
+	/* The index of QP */
+	__le32 qpn;
+	/* The mask of attributes need to be queried, enum virtio_ib_qp_attr_mask */
+	__le32 attr_mask;
+};
+
+struct virtio_rdma_ack_query_qp {
+	/* Move the QP to this state, enum virtio_ib_qp_state */
+	__u8 qp_state;
+	/* Path MTU (valid only for RC/UC QPs), enum virtio_ib_mtu */
+	__u8 path_mtu;
+	/* Is the SQ draining */
+	__u8 sq_draining;
+	/* Number of outstanding RDMA read operations on the destination QP (valid only for RC QPs) */
+	__u8 max_rd_atomic;
+	/* Number of responder resources for handling incoming RDMA read operations (valid only for RC QPs) */
+	__u8 max_dest_rd_atomic;
+	/* Minimum RNR NAK timer (valid only for RC QPs) */
+	__u8 min_rnr_timer;
+	/* Local ack timeout (valid only for RC QPs) */
+	__u8 timeout;
+	/* Retry count (valid only for RC QPs) */
+	__u8 retry_cnt;
+	/* RNR retry (valid only for RC QPs) */
+	__u8 rnr_retry;
+	/* Padding */
+	__u8 padding[7];
+	/* Q_Key for the QP (valid only for UD QPs) */
+	__le32 qkey;
+	/* PSN for RQ (valid only for RC/UC QPs) */
+	__le32 rq_psn;
+	/* PSN for SQ */
+	__le32 sq_psn;
+	/* Destination QP number (valid only for RC/UC QPs) */
+	__le32 dest_qp_num;
+	/* Mask of enabled remote access operations (valid only for RC/UC QPs), enum virtio_ib_access_flags */
+	__le32 qp_access_flags;
+	/* Rate limit in kbps for packet pacing */
+	__le32 rate_limit;
+	/* QP capabilities */
+	struct virtio_rdma_qp_cap cap;
+	/* Address Vector (valid only for RC/UC QPs) */
+	struct virtio_rdma_ah_attr ah_attr;
+	/* Reserved for future */
+	__le32 reserved[4];
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_QUERY_QP        11
+
+struct virtio_rdma_cmd_destroy_qp {
+	/* The index of QP */
+	__le32 qpn;
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_DESTROY_QP        12
+
+struct virtio_rdma_cmd_create_ah {
+	/* The handle of PD which the AH associated with */
+	__le32 pdn;
+	/* Padding */
+	__le32 padding;
+	/* Address vector */
+	struct virtio_rdma_ah_attr ah_attr;
+};
+
+struct virtio_rdma_ack_create_ah {
+	/* The address handle */
+	__le32 ah;
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_CREATE_AH        13
+
+struct virtio_rdma_cmd_destroy_ah {
+	/* The handle of PD which the AH associated with */
+	__le32 pdn;
+	/* The address handle */
+	__le32 ah;
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_DESTROY_AH        14
+
+struct virtio_rdma_cmd_add_gid {
+	/* The index of GID */
+	__le16 index;
+	/* Padding */
+	__le16 padding[3];
+	/* GID to be added */
+	__u8 gid[16];
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_ADD_GID        15
+
+struct virtio_rdma_cmd_del_gid {
+	/* The index of GID */
+	__le16 index;
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_DEL_GID        16
+
+struct virtio_rdma_cmd_req_notify {
+	/* The index of CQ */
+	__le32 cqn;
+#define VIRTIO_IB_CQ_SOLICITED    (1 << 0)
+#define VIRTIO_IB_CQ_NEXT_COMP    (1 << 1)
+	/* Notify flags */
+	__le32 flags;
+};
+
+ #define VIRTIO_NET_CTRL_ROCE_REQ_NOTIFY_CQ        17
 
 #endif /* _UAPI_LINUX_VIRTIO_NET_H */

@@ -212,4 +212,7 @@ static inline int virtio_net_hdr_from_skb(const struct sk_buff *skb,
 	return 0;
 }
 
+bool virtnet_send_command(struct net_device *dev, u8 class, u8 cmd,
+			  struct scatterlist *out, struct scatterlist *in);
+
 #endif /* _LINUX_VIRTIO_NET_H */

@@ -86,6 +86,8 @@ bool virtqueue_enable_cb_delayed(struct virtqueue *vq);
 
 void *virtqueue_detach_unused_buf(struct virtqueue *vq);
 
+void virtqueue_reset_vring(struct virtqueue *vq);
+
 unsigned int virtqueue_get_vring_size(const struct virtqueue *vq);
 
 bool virtqueue_is_broken(const struct virtqueue *vq);

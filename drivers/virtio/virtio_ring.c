@@ -2468,6 +2468,21 @@ void *virtqueue_detach_unused_buf(struct virtqueue *_vq)
 }
 EXPORT_SYMBOL_GPL(virtqueue_detach_unused_buf);
 
+void virtqueue_reset_vring(struct virtqueue *_vq)
+{
+	struct vring_virtqueue *vq = to_vvq(_vq);
+
+	vq->last_used_idx = 0;
+	vq->split.avail_flags_shadow = 0;
+	vq->split.avail_idx_shadow = 0;
+	vq->free_head = 0;
+	memset(vq->split.desc_state, 0, vq->split.vring.num *
+		sizeof(struct vring_desc_state_split));
+	vq->split.vring.avail->idx = 0;
+	vq->split.vring.used->idx = 0;
+}
+EXPORT_SYMBOL_GPL(virtqueue_reset_vring);
+
 static inline bool more_used(const struct vring_virtqueue *vq)
 {
 	return vq->packed_ring ? more_used_packed(vq) : more_used_split(vq);

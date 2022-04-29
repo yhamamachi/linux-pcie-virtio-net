@@ -2399,6 +2399,14 @@ bool virtqueue_poll(struct virtqueue *_vq, unsigned int last_used_idx)
 }
 EXPORT_SYMBOL_GPL(virtqueue_poll);
 
+u16 virtqueue_unused(struct virtqueue *_vq)
+{
+	struct vring_virtqueue *vq = to_vvq(_vq);
+
+	return virtqueue_get_vring_size(_vq) - vq->vq.num_free;
+}
+EXPORT_SYMBOL_GPL(virtqueue_unused);
+
 /**
  * virtqueue_enable_cb - restart callbacks after disable_cb.
  * @_vq: the struct virtqueue we're talking about.

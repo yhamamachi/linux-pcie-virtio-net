@@ -2259,11 +2259,12 @@ static int virtnet_tx_resize(struct virtnet_info *vi,
  * supported by the hypervisor, as indicated by feature bits, should
  * never fail unless improperly formatted.
  */
-static bool virtnet_send_command(struct virtnet_info *vi, u8 class, u8 cmd,
-				 struct scatterlist *out)
+bool virtnet_send_command(struct net_device *dev, u8 class, u8 cmd,
+			  struct scatterlist *out, struct scatterlist *in)
 {
+	struct virtnet_info *vi = netdev_priv(dev);
 	struct scatterlist *sgs[4], hdr, stat;
-	unsigned out_num = 0, tmp;
+	unsigned out_num = 0, in_num = 0, tmp;
 	int ret;
 
 	/* Caller should know better */
@@ -2281,10 +2282,13 @@ static bool virtnet_send_command(struct virtnet_info *vi, u8 class, u8 cmd,
 
 	/* Add return status. */
 	sg_init_one(&stat, &vi->ctrl->status, sizeof(vi->ctrl->status));
-	sgs[out_num] = &stat;
+	sgs[out_num + in_num++] = &stat;
 
-	BUG_ON(out_num + 1 > ARRAY_SIZE(sgs));
-	ret = virtqueue_add_sgs(vi->cvq, sgs, out_num, 1, vi, GFP_ATOMIC);
+	if (in)
+		sgs[out_num + in_num++] = in;
+
+	BUG_ON(out_num + in_num > ARRAY_SIZE(sgs));
+	ret = virtqueue_add_sgs(vi->cvq, sgs, out_num, in_num, vi, GFP_ATOMIC);
 	if (ret < 0) {
 		dev_warn(&vi->vdev->dev,
 			 "Failed to add sgs for command vq: %d\n.", ret);
@@ -2303,6 +2307,7 @@ static bool virtnet_send_command(struct virtnet_info *vi, u8 class, u8 cmd,
 
 	return vi->ctrl->status == VIRTIO_NET_OK;
 }
+EXPORT_SYMBOL_GPL(virtnet_send_command);
 
 static int virtnet_set_mac_address(struct net_device *dev, void *p)
 {
@@ -2325,8 +2330,9 @@ static int virtnet_set_mac_address(struct net_device *dev, void *p)
 
 	if (virtio_has_feature(vdev, VIRTIO_NET_F_CTRL_MAC_ADDR)) {
 		sg_init_one(&sg, addr->sa_data, dev->addr_len);
-		if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_MAC,
-					  VIRTIO_NET_CTRL_MAC_ADDR_SET, &sg)) {
+		if (!virtnet_send_command(dev, VIRTIO_NET_CTRL_MAC,
+					  VIRTIO_NET_CTRL_MAC_ADDR_SET,
+					  &sg, NULL)) {
 			dev_warn(&vdev->dev,
 				 "Failed to set mac address by vq command.\n");
 			ret = -EINVAL;
@@ -2393,9 +2399,11 @@ static void virtnet_stats(struct net_device *dev,
 
 static void virtnet_ack_link_announce(struct virtnet_info *vi)
 {
+	struct net_device *dev = vi->dev;
+
 	rtnl_lock();
-	if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_ANNOUNCE,
-				  VIRTIO_NET_CTRL_ANNOUNCE_ACK, NULL))
+	if (!virtnet_send_command(dev, VIRTIO_NET_CTRL_ANNOUNCE,
+				  VIRTIO_NET_CTRL_ANNOUNCE_ACK, NULL, NULL))
 		dev_warn(&vi->dev->dev, "Failed to ack link announce.\n");
 	rtnl_unlock();
 }
@@ -2411,8 +2419,9 @@ static int _virtnet_set_queues(struct virtnet_info *vi, u16 queue_pairs)
 	vi->ctrl->mq.virtqueue_pairs = cpu_to_virtio16(vi->vdev, queue_pairs);
 	sg_init_one(&sg, &vi->ctrl->mq, sizeof(vi->ctrl->mq));
 
-	if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_MQ,
-				  VIRTIO_NET_CTRL_MQ_VQ_PAIRS_SET, &sg)) {
+	if (!virtnet_send_command(dev, VIRTIO_NET_CTRL_MQ,
+				  VIRTIO_NET_CTRL_MQ_VQ_PAIRS_SET,
+				  &sg, NULL)) {
 		dev_warn(&dev->dev, "Fail to set num of queue pairs to %d\n",
 			 queue_pairs);
 		return -EINVAL;
@@ -2472,15 +2481,15 @@ static void virtnet_set_rx_mode(struct net_device *dev)
 
 	sg_init_one(sg, &vi->ctrl->promisc, sizeof(vi->ctrl->promisc));
 
-	if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_RX,
-				  VIRTIO_NET_CTRL_RX_PROMISC, sg))
+	if (!virtnet_send_command(dev, VIRTIO_NET_CTRL_RX,
+				  VIRTIO_NET_CTRL_RX_PROMISC, sg, NULL))
 		dev_warn(&dev->dev, "Failed to %sable promisc mode.\n",
 			 vi->ctrl->promisc ? "en" : "dis");
 
 	sg_init_one(sg, &vi->ctrl->allmulti, sizeof(vi->ctrl->allmulti));
 
-	if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_RX,
-				  VIRTIO_NET_CTRL_RX_ALLMULTI, sg))
+	if (!virtnet_send_command(dev, VIRTIO_NET_CTRL_RX,
+				  VIRTIO_NET_CTRL_RX_ALLMULTI, sg, NULL))
 		dev_warn(&dev->dev, "Failed to %sable allmulti mode.\n",
 			 vi->ctrl->allmulti ? "en" : "dis");
 
@@ -2515,8 +2524,8 @@ static void virtnet_set_rx_mode(struct net_device *dev)
 	sg_set_buf(&sg[1], mac_data,
 		   sizeof(mac_data->entries) + (mc_count * ETH_ALEN));
 
-	if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_MAC,
-				  VIRTIO_NET_CTRL_MAC_TABLE_SET, sg))
+	if (!virtnet_send_command(dev, VIRTIO_NET_CTRL_MAC,
+				  VIRTIO_NET_CTRL_MAC_TABLE_SET, sg, NULL))
 		dev_warn(&dev->dev, "Failed to set MAC filter table.\n");
 
 	kfree(buf);
@@ -2531,8 +2540,8 @@ static int virtnet_vlan_rx_add_vid(struct net_device *dev,
 	vi->ctrl->vid = cpu_to_virtio16(vi->vdev, vid);
 	sg_init_one(&sg, &vi->ctrl->vid, sizeof(vi->ctrl->vid));
 
-	if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_VLAN,
-				  VIRTIO_NET_CTRL_VLAN_ADD, &sg))
+	if (!virtnet_send_command(dev, VIRTIO_NET_CTRL_VLAN,
+				  VIRTIO_NET_CTRL_VLAN_ADD, &sg, NULL))
 		dev_warn(&dev->dev, "Failed to add VLAN ID %d.\n", vid);
 	return 0;
 }
@@ -2546,8 +2555,8 @@ static int virtnet_vlan_rx_kill_vid(struct net_device *dev,
 	vi->ctrl->vid = cpu_to_virtio16(vi->vdev, vid);
 	sg_init_one(&sg, &vi->ctrl->vid, sizeof(vi->ctrl->vid));
 
-	if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_VLAN,
-				  VIRTIO_NET_CTRL_VLAN_DEL, &sg))
+	if (!virtnet_send_command(dev, VIRTIO_NET_CTRL_VLAN,
+				  VIRTIO_NET_CTRL_VLAN_DEL, &sg, NULL))
 		dev_warn(&dev->dev, "Failed to kill VLAN ID %d.\n", vid);
 	return 0;
 }
@@ -2736,9 +2745,9 @@ static bool virtnet_commit_rss_command(struct virtnet_info *vi)
 	sg_buf_size = vi->rss_key_size;
 	sg_set_buf(&sgs[3], vi->ctrl->rss.key, sg_buf_size);
 
-	if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_MQ,
+	if (!virtnet_send_command(dev, VIRTIO_NET_CTRL_MQ,
 				  vi->has_rss ? VIRTIO_NET_CTRL_MQ_RSS_CONFIG
-				  : VIRTIO_NET_CTRL_MQ_HASH_CONFIG, sgs)) {
+				  : VIRTIO_NET_CTRL_MQ_HASH_CONFIG, sgs, NULL)) {
 		dev_warn(&dev->dev, "VIRTIONET issue with committing RSS sgs\n");
 		return false;
 	}
@@ -3050,9 +3059,9 @@ static int virtnet_send_notf_coal_cmds(struct virtnet_info *vi,
 	vi->ctrl->coal_tx.tx_max_packets = cpu_to_le32(ec->tx_max_coalesced_frames);
 	sg_init_one(&sgs_tx, &vi->ctrl->coal_tx, sizeof(vi->ctrl->coal_tx));
 
-	if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_NOTF_COAL,
+	if (!virtnet_send_command(vi->dev, VIRTIO_NET_CTRL_NOTF_COAL,
 				  VIRTIO_NET_CTRL_NOTF_COAL_TX_SET,
-				  &sgs_tx))
+				  &sgs_tx, NULL))
 		return -EINVAL;
 
 	/* Save parameters */
@@ -3063,9 +3072,9 @@ static int virtnet_send_notf_coal_cmds(struct virtnet_info *vi,
 	vi->ctrl->coal_rx.rx_max_packets = cpu_to_le32(ec->rx_max_coalesced_frames);
 	sg_init_one(&sgs_rx, &vi->ctrl->coal_rx, sizeof(vi->ctrl->coal_rx));
 
-	if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_NOTF_COAL,
+	if (!virtnet_send_command(vi->dev, VIRTIO_NET_CTRL_NOTF_COAL,
 				  VIRTIO_NET_CTRL_NOTF_COAL_RX_SET,
-				  &sgs_rx))
+				  &sgs_rx, NULL))
 		return -EINVAL;
 
 	/* Save parameters */
@@ -3327,13 +3336,15 @@ static int virtnet_restore_up(struct virtio_device *vdev)
 
 static int virtnet_set_guest_offloads(struct virtnet_info *vi, u64 offloads)
 {
+	struct net_device *dev = vi->dev;
 	struct scatterlist sg;
 	vi->ctrl->offloads = cpu_to_virtio64(vi->vdev, offloads);
 
 	sg_init_one(&sg, &vi->ctrl->offloads, sizeof(vi->ctrl->offloads));
 
-	if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_GUEST_OFFLOADS,
-				  VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET, &sg)) {
+	if (!virtnet_send_command(dev, VIRTIO_NET_CTRL_GUEST_OFFLOADS,
+				  VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET,
+				  &sg, NULL)) {
 		dev_warn(&vi->dev->dev, "Fail to set guest offload.\n");
 		return -EINVAL;
 	}
@@ -4240,8 +4251,8 @@ static int virtnet_probe(struct virtio_device *vdev)
 		struct scatterlist sg;
 
 		sg_init_one(&sg, dev->dev_addr, dev->addr_len);
-		if (!virtnet_send_command(vi, VIRTIO_NET_CTRL_MAC,
-					  VIRTIO_NET_CTRL_MAC_ADDR_SET, &sg)) {
+		if (!virtnet_send_command(vi->dev, VIRTIO_NET_CTRL_MAC,
+					  VIRTIO_NET_CTRL_MAC_ADDR_SET, &sg, NULL)) {
 			pr_debug("virtio_net: setting MAC address failed\n");
 			rtnl_unlock();
 			err = -EINVAL;

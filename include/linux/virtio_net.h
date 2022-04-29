@@ -3,6 +3,8 @@
 #define _LINUX_VIRTIO_NET_H
 
 #include <linux/if_vlan.h>
+#include <linux/auxiliary_bus.h>
+#include <linux/virtio.h>
 #include <uapi/linux/tcp.h>
 #include <uapi/linux/udp.h>
 #include <uapi/linux/virtio_net.h>
@@ -21,6 +23,35 @@ static inline bool virtio_net_hdr_match_proto(__be16 protocol, __u8 gso_type)
 	default:
 		return false;
 	}
+}
+
+#define VNET_ADEV_NAME "virtio_net"
+
+struct virtio_rdma_vq {
+	struct virtqueue *vq;
+	spinlock_t lock;
+	char name[16];
+	int idx;
+};
+
+struct virtnet_adev {
+	struct auxiliary_device adev;
+	struct virtio_device *vdev;
+	struct net_device *ndev;
+
+	struct virtio_rdma_vq *cq_vqs;
+	uint32_t max_cq;
+
+	struct virtio_rdma_vq *qp_vqs;
+	uint32_t max_qp;
+};
+
+typedef void rdma_cq_callback_t(struct virtnet_adev *, struct virtqueue *);
+
+void virtnet_set_cq_cb(struct virtnet_adev *adev, rdma_cq_callback_t *cb);
+
+static inline struct virtnet_adev* to_vnet_adev(struct auxiliary_device* adev) {
+	return container_of(adev, struct virtnet_adev, adev);
 }
 
 static inline int virtio_net_hdr_set_proto(struct sk_buff *skb,

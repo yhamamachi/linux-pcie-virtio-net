@@ -23,6 +23,18 @@
 #include <net/xdp.h>
 #include <net/net_failover.h>
 
+static DEFINE_IDA(virtnet_adev_ida);
+
+static int virtnet_adev_idx_alloc(void)
+{
+	return ida_alloc(&virtnet_adev_ida, GFP_KERNEL);
+}
+
+static void virtnet_adev_idx_free(int idx)
+{
+	ida_free(&virtnet_adev_ida, idx);
+}
+
 static int napi_weight = NAPI_POLL_WEIGHT;
 module_param(napi_weight, int, 0444);
 
@@ -217,6 +229,16 @@ struct virtnet_info {
 	struct receive_queue *rq;
 	unsigned int status;
 
+	struct virtnet_adev *adev;
+	int adev_id;
+
+	// FIXME: should init in virtio-rdma when alloc on demand is available
+	uint32_t max_qp;
+	uint32_t max_cq;
+	struct virtio_rdma_vq* cq_vqs;
+	struct virtio_rdma_vq* qp_vqs;
+	rdma_cq_callback_t *cq_cb;
+
 	/* Max # of queue pairs supported by the device */
 	u16 max_queue_pairs;
 
@@ -292,6 +314,14 @@ struct virtnet_info {
 	/* failover when STANDBY feature enabled */
 	struct failover *failover;
 };
+
+void virtnet_set_cq_cb(struct virtnet_adev *adev, rdma_cq_callback_t *cb)
+{
+	struct virtnet_info *vi = adev->vdev->priv;
+
+	vi->cq_cb = cb;
+}
+EXPORT_SYMBOL_GPL(virtnet_set_cq_cb);
 
 struct padded_vnet_hdr {
 	struct virtio_net_hdr_v1_hash hdr;
@@ -3636,12 +3666,21 @@ static unsigned int mergeable_min_buf_len(struct virtnet_info *vi, struct virtqu
 		   (unsigned int)GOOD_PACKET_LEN);
 }
 
+static void virtnet_rdma_cq_ack(struct virtqueue *vq)
+{
+	struct virtnet_info *vi = vq->vdev->priv;
+	struct virtnet_adev *adev = vi->adev;
+
+	if (vi->cq_cb)
+		vi->cq_cb(adev, vq);
+}
+
 static int virtnet_find_vqs(struct virtnet_info *vi)
 {
 	vq_callback_t **callbacks;
 	struct virtqueue **vqs;
 	int ret = -ENOMEM;
-	int i, total_vqs;
+	int i, total_vqs, net_vqs, cur_vq;
 	const char **names;
 	bool *ctx;
 
@@ -3651,6 +3690,11 @@ static int virtnet_find_vqs(struct virtnet_info *vi)
 	 */
 	total_vqs = vi->max_queue_pairs * 2 +
 		    virtio_has_feature(vi->vdev, VIRTIO_NET_F_CTRL_VQ);
+
+	net_vqs = total_vqs;
+
+	// FIXME: should move to virtio-rdma when alloc on demand is available
+	total_vqs += vi->max_cq + vi->max_qp * 2;
 
 	/* Allocate space for find_vqs parameters */
 	vqs = kcalloc(total_vqs, sizeof(*vqs), GFP_KERNEL);
@@ -3672,8 +3716,8 @@ static int virtnet_find_vqs(struct virtnet_info *vi)
 
 	/* Parameters for control virtqueue, if any */
 	if (vi->has_cvq) {
-		callbacks[total_vqs - 1] = NULL;
-		names[total_vqs - 1] = "control";
+		callbacks[net_vqs - 1] = NULL;
+		names[net_vqs - 1] = "control";
 	}
 
 	/* Allocate/initialize parameters for send/receive virtqueues */
@@ -3688,13 +3732,32 @@ static int virtnet_find_vqs(struct virtnet_info *vi)
 			ctx[rxq2vq(i)] = true;
 	}
 
+	/************** virtio-rdma ****************/
+	cur_vq = net_vqs;
+
+	for (i = 0; i < vi->max_cq; i++, cur_vq++) {
+		sprintf(vi->cq_vqs[i].name, "rdma.cq.%d", i);
+		names[cur_vq] = vi->cq_vqs[i].name;
+		callbacks[cur_vq] = virtnet_rdma_cq_ack;
+	}
+
+	for (i = 0; i < vi->max_qp * 2; i += 2, cur_vq += 2) {
+		sprintf(vi->qp_vqs[i].name, "rdma.sqp.%d", i);
+		sprintf(vi->qp_vqs[i+1].name, "rdma.rqp.%d", i);
+		names[cur_vq] = vi->qp_vqs[i].name;
+		names[cur_vq+1] = vi->qp_vqs[i+1].name;
+		callbacks[cur_vq] = NULL;
+		callbacks[cur_vq+1] = NULL;
+	}
+	/*************** end of rdma *************/
+
 	ret = virtio_find_vqs_ctx(vi->vdev, total_vqs, vqs, callbacks,
 				  names, ctx, NULL);
 	if (ret)
 		goto err_find;
 
 	if (vi->has_cvq) {
-		vi->cvq = vqs[total_vqs - 1];
+		vi->cvq = vqs[net_vqs - 1];
 		if (virtio_has_feature(vi->vdev, VIRTIO_NET_F_CTRL_VLAN))
 			vi->dev->features |= NETIF_F_HW_VLAN_CTAG_FILTER;
 	}
@@ -3704,6 +3767,25 @@ static int virtnet_find_vqs(struct virtnet_info *vi)
 		vi->rq[i].min_buf_len = mergeable_min_buf_len(vi, vi->rq[i].vq);
 		vi->sq[i].vq = vqs[txq2vq(i)];
 	}
+
+	/************** virtio-rdma ****************/
+	cur_vq = net_vqs;
+
+	for (i = 0; i < vi->max_cq; i++, cur_vq++) {
+		vi->cq_vqs[i].vq = vqs[cur_vq];
+		vi->cq_vqs[i].idx = i;
+		spin_lock_init(&vi->cq_vqs[i].lock);
+	}
+
+	for (i = 0; i < vi->max_qp * 2; i += 2, cur_vq += 2) {
+		vi->qp_vqs[i].vq = vqs[cur_vq];
+		vi->qp_vqs[i + 1].vq = vqs[cur_vq + 1];
+		vi->qp_vqs[i].idx = i / 2;
+		vi->qp_vqs[i + 1].idx = i / 2;
+		spin_lock_init(&vi->qp_vqs[i].lock);
+		spin_lock_init(&vi->qp_vqs[i + 1].lock);
+	}
+	/*************** end of rdma *************/
 
 	/* run here: ret == 0. */
 
@@ -3737,6 +3819,13 @@ static int virtnet_alloc_queues(struct virtnet_info *vi)
 	vi->rq = kcalloc(vi->max_queue_pairs, sizeof(*vi->rq), GFP_KERNEL);
 	if (!vi->rq)
 		goto err_rq;
+
+	if (vi->max_cq) {
+		vi->cq_vqs = kcalloc(vi->max_cq, sizeof(*vi->cq_vqs), GFP_KERNEL);
+	}
+	if (vi->max_qp) {
+		vi->qp_vqs = kcalloc(vi->max_qp * 2, sizeof(*vi->qp_vqs), GFP_KERNEL);
+	}
 
 	INIT_DELAYED_WORK(&vi->refill, refill_work);
 	for (i = 0; i < vi->max_queue_pairs; i++) {
@@ -3854,6 +3943,8 @@ static bool virtnet_validate_features(struct virtio_device *vdev)
 	     VIRTNET_FAIL_ON(vdev, VIRTIO_NET_F_HASH_REPORT,
 			     "VIRTIO_NET_F_CTRL_VQ") ||
 	     VIRTNET_FAIL_ON(vdev, VIRTIO_NET_F_NOTF_COAL,
+			     "VIRTIO_NET_F_CTRL_VQ") ||
+	     VIRTNET_FAIL_ON(vdev, VIRTIO_NET_F_ROCE,
 			     "VIRTIO_NET_F_CTRL_VQ"))) {
 		return false;
 	}
@@ -3914,6 +4005,67 @@ static void virtnet_set_big_packets(struct virtnet_info *vi, const int mtu)
 		vi->big_packets = true;
 		vi->big_packets_num_skbfrags = guest_gso ? MAX_SKB_FRAGS : DIV_ROUND_UP(mtu, PAGE_SIZE);
 	}
+}
+
+static int virtnet_init_roce(struct virtnet_info *vi) {
+	pr_info("========================\n init roce\n========================");
+	WARN_ONCE(strcmp(VNET_ADEV_NAME, KBUILD_MODNAME),
+		  "virtio_net name not in sync with kernel module name");
+	virtio_cread_le(vi->vdev, struct virtio_net_config,
+			max_rdma_qps, &vi->max_qp);
+	virtio_cread_le(vi->vdev, struct virtio_net_config,
+			max_rdma_cqs, &vi->max_cq);
+	pr_info("qp & cq: %u %u\n", vi->max_qp, vi->max_cq);
+
+	return 0;
+}
+
+static void virtnet_adev_release(struct device *dev)
+{
+	// TODO: free virtnet_adev
+}
+
+static struct virtnet_adev* virtnet_add_adev(struct virtnet_info *vi) {
+	static const char *suffix = "roce";
+	struct auxiliary_device *adev;
+	struct virtnet_adev *vadev;
+	int ret;
+
+	vadev = kzalloc(sizeof(*vadev), GFP_KERNEL);
+	if (!vadev)
+		return ERR_PTR(-ENOMEM);
+
+	adev = &vadev->adev;
+	adev->id = vi->adev_id;
+	adev->name = suffix;
+	adev->dev.parent = &vi->vdev->dev;
+	adev->dev.release = virtnet_adev_release;
+
+	vadev->vdev = vi->vdev;
+	vadev->ndev = vi->dev;
+	vadev->cq_vqs = vi->cq_vqs;
+	vadev->qp_vqs = vi->qp_vqs;
+	vadev->max_cq = vi->max_cq;
+	vadev->max_qp = vi->max_qp;
+
+	ret = auxiliary_device_init(adev);
+	if (ret) {
+		kfree(vadev);
+		return ERR_PTR(ret);
+	}
+
+	ret = auxiliary_device_add(adev);
+	if (ret) {
+		auxiliary_device_uninit(adev);
+		return ERR_PTR(ret);
+	}
+	return vadev;
+}
+
+static void virtnet_del_adev(struct auxiliary_device *adev)
+{
+	auxiliary_device_delete(adev);
+	auxiliary_device_uninit(adev);
 }
 
 static int virtnet_probe(struct virtio_device *vdev)
@@ -4065,6 +4217,10 @@ static int virtnet_probe(struct virtio_device *vdev)
 	if (virtio_has_feature(vdev, VIRTIO_NET_F_CTRL_VQ))
 		vi->has_cvq = true;
 
+	pr_info("features: %llx\n", vdev->features);
+	if (virtio_has_feature(vdev, VIRTIO_NET_F_ROCE))
+		virtnet_init_roce(vi);
+
 	if (virtio_has_feature(vdev, VIRTIO_NET_F_MTU)) {
 		mtu = virtio_cread16(vdev,
 				     offsetof(struct virtio_net_config,
@@ -4151,12 +4307,22 @@ static int virtnet_probe(struct virtio_device *vdev)
 		}
 	}
 
+	if (virtio_has_feature(vdev, VIRTIO_NET_F_ROCE)) {
+		vi->adev_id = virtnet_adev_idx_alloc();
+		vi->adev = virtnet_add_adev(vi);
+		if (IS_ERR(vi->adev)) {
+			err = PTR_ERR(vi->adev);
+			pr_err("virtio_net: add adev failed");
+			goto free_unregister_netdev;
+		}
+	}
+
 	rtnl_unlock();
 
 	err = virtnet_cpu_notif_add(vi);
 	if (err) {
 		pr_debug("virtio_net: registering cpu notifier failed\n");
-		goto free_unregister_netdev;
+		goto free_adev;
 	}
 
 	virtnet_set_queues(vi, vi->curr_queue_pairs);
@@ -4182,6 +4348,8 @@ static int virtnet_probe(struct virtio_device *vdev)
 
 	return 0;
 
+free_adev:
+	virtnet_del_adev(&vi->adev->adev);
 free_unregister_netdev:
 	unregister_netdev(dev);
 free_failover:
@@ -4218,6 +4386,11 @@ static void virtnet_remove(struct virtio_device *vdev)
 
 	/* Make sure no work handler is accessing the device. */
 	flush_work(&vi->config_work);
+
+	if (vi->adev) {
+		virtnet_del_adev(&vi->adev->adev);
+		virtnet_adev_idx_free(vi->adev_id);
+	}
 
 	unregister_netdev(vi->dev);
 
@@ -4274,7 +4447,7 @@ static struct virtio_device_id id_table[] = {
 	VIRTIO_NET_F_MRG_RXBUF, VIRTIO_NET_F_STATUS, VIRTIO_NET_F_CTRL_VQ, \
 	VIRTIO_NET_F_CTRL_RX, VIRTIO_NET_F_CTRL_VLAN, \
 	VIRTIO_NET_F_GUEST_ANNOUNCE, VIRTIO_NET_F_MQ, \
-	VIRTIO_NET_F_CTRL_MAC_ADDR, \
+	VIRTIO_NET_F_CTRL_MAC_ADDR, VIRTIO_NET_F_ROCE, \
 	VIRTIO_NET_F_MTU, VIRTIO_NET_F_CTRL_GUEST_OFFLOADS, \
 	VIRTIO_NET_F_SPEED_DUPLEX, VIRTIO_NET_F_STANDBY, \
 	VIRTIO_NET_F_RSS, VIRTIO_NET_F_HASH_REPORT, VIRTIO_NET_F_NOTF_COAL, \

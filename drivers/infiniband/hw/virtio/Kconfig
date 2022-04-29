@@ -1,0 +1,6 @@
+config INFINIBAND_VIRTIO_RDMA
+	tristate "VirtIO Paravirtualized RDMA Driver"
+	depends on NETDEVICES && ETHERNET && PCI && INET && VIRTIO
+	help
+	  This driver provides low-level support for VirtIO Paravirtual
+	  RDMA adapter.

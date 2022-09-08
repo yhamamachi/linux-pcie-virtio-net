@@ -77,6 +77,8 @@ struct pci_epc_ops {
 			       phys_addr_t phys_addr, u8 interrupt_num,
 			       u32 entry_size, u32 *msi_data,
 			       u32 *msi_addr_offset);
+	int (*align_mem)(struct pci_epc *epc, phys_addr_t addr, size_t size,
+			 phys_addr_t *aaddr, size_t *asize);
 	int	(*start)(struct pci_epc *epc);
 	void	(*stop)(struct pci_epc *epc);
 	const struct pci_epc_features* (*get_features)(struct pci_epc *epc,
@@ -272,4 +274,6 @@ void __iomem *pci_epc_mem_alloc_addr(struct pci_epc *epc,
 				     phys_addr_t *phys_addr, size_t size);
 void pci_epc_mem_free_addr(struct pci_epc *epc, phys_addr_t phys_addr,
 			   void __iomem *virt_addr, size_t size);
+int pci_epc_mem_align(struct pci_epc *epc, phys_addr_t addr, size_t size,
+		      phys_addr_t *aaddr, size_t *asize);
 #endif /* __LINUX_PCI_EPC_H */

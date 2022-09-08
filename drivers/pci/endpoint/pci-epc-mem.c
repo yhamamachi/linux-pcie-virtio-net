@@ -268,5 +268,24 @@ void pci_epc_mem_free_addr(struct pci_epc *epc, phys_addr_t phys_addr,
 }
 EXPORT_SYMBOL_GPL(pci_epc_mem_free_addr);
 
+int pci_epc_mem_align(struct pci_epc *epc, phys_addr_t addr, size_t size,
+		phys_addr_t *aaddr, size_t *asize)
+{
+	int ret;
+
+	if (!epc->ops->align_mem) {
+		*aaddr = addr;
+		*asize = size;
+		return 0;
+	}
+
+	mutex_lock(&epc->lock);
+	ret = epc->ops->align_mem(epc, addr, size, aaddr, asize);
+	mutex_unlock(&epc->lock);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(pci_epc_mem_align);
+
 MODULE_DESCRIPTION("PCI EPC Address Space Management");
 MODULE_AUTHOR("Kishon Vijay Abraham I <kishon@ti.com>");

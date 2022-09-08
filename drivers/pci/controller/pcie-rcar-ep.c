@@ -418,6 +418,23 @@ static int rcar_pcie_ep_raise_irq(struct pci_epc *epc, u8 fn, u8 vfn,
 	}
 }
 
+static int rcar_pcie_ep_align_mem(struct pci_epc *epc, phys_addr_t addr,
+				  size_t size, phys_addr_t *aaddr, size_t *asize)
+{
+	size_t align;
+
+	if (!addr)
+		return -EINVAL;
+
+	for (align = 256; ALIGN(addr, align) < addr + size; align <<= 1)
+		;
+
+	*aaddr = ALIGN_DOWN(addr, align);
+	*asize = align;
+
+	return 0;
+}
+
 static int rcar_pcie_ep_start(struct pci_epc *epc)
 {
 	struct rcar_pcie_endpoint *ep = epc_get_drvdata(epc);
@@ -466,6 +483,7 @@ static const struct pci_epc_ops rcar_pcie_epc_ops = {
 	.map_addr	= rcar_pcie_ep_map_addr,
 	.unmap_addr	= rcar_pcie_ep_unmap_addr,
 	.raise_irq	= rcar_pcie_ep_raise_irq,
+	.align_mem = rcar_pcie_ep_align_mem,
 	.start		= rcar_pcie_ep_start,
 	.stop		= rcar_pcie_ep_stop,
 	.get_features	= rcar_pcie_ep_get_features,

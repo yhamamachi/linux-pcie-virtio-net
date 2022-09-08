@@ -425,6 +425,18 @@ static int dw_pcie_ep_raise_irq(struct pci_epc *epc, u8 func_no, u8 vfunc_no,
 	return ep->ops->raise_irq(ep, func_no, type, interrupt_num);
 }
 
+static int dw_pcie_ep_align_mem(struct pci_epc *epc, phys_addr_t addr,
+				size_t size, phys_addr_t *aaddr, size_t *asize)
+{
+	struct dw_pcie_ep *ep = epc_get_drvdata(epc);
+	struct dw_pcie *pci = to_dw_pcie_from_ep(ep);
+
+	*aaddr = ALIGN_DOWN(addr, pci->region_align);
+	*asize = size + addr - *aaddr;
+
+	return 0;
+}
+
 static void dw_pcie_ep_stop(struct pci_epc *epc)
 {
 	struct dw_pcie_ep *ep = epc_get_drvdata(epc);
@@ -463,6 +475,7 @@ static const struct pci_epc_ops epc_ops = {
 	.set_msix		= dw_pcie_ep_set_msix,
 	.get_msix		= dw_pcie_ep_get_msix,
 	.raise_irq		= dw_pcie_ep_raise_irq,
+	.align_mem		= dw_pcie_ep_align_mem,
 	.start			= dw_pcie_ep_start,
 	.stop			= dw_pcie_ep_stop,
 	.get_features		= dw_pcie_ep_get_features,

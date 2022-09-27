@@ -14,6 +14,7 @@
 #include <linux/netdevice.h>
 #include <linux/ethtool.h>
 #include <linux/vringh.h>
+#include <linux/dmaengine.h>
 
 //TODO care for native endianess
 struct virtio_common_config {
@@ -41,7 +42,7 @@ struct epf_virtnet {
 	struct workqueue_struct *tx_wq, *irq_wq;
 	struct vringh rx_vrh, tx_vrh;
 	struct vringh_kiov txiov, rxiov;
-	struct vring_used_elem *tx_used_elems, *rx_used_elems;
+	struct vring_used_elem *rx_used_elems;
 
 	void __iomem *tx_epc_mem, *rx_epc_mem;
 	struct work_struct raise_irq_work;
@@ -49,6 +50,9 @@ struct epf_virtnet {
 
 	struct sk_buff_head txq;
 	struct sk_buff_head rxq;
+
+	dma_addr_t dma_hdr_addr;
+	struct dma_chan *tx_dma_chan; //, *rx_dma_chan;
 };
 
 struct local_ndev_adapter {
@@ -295,12 +299,6 @@ static int epf_virtnet_config_monitor(void *data)
 	kvec = kmalloc_array(EPF_VIRTNET_Q_SIZE, sizeof *kvec, GFP_KERNEL);
 	vringh_kiov_init(&vnet->txiov, kvec, EPF_VIRTNET_Q_SIZE);
 
-	vnet->tx_used_elems = kmalloc_array(4, sizeof vnet->tx_used_elems[0], GFP_KERNEL);
-	if (!vnet->tx_used_elems) {
-		pr_err("failed malloc\n");
-		return -ENOMEM;
-	}
-
 	/* rx */
 	tmp = epf_virtnet_map_host_vq(vnet, rxpfn);
 	if (!tmp) {
@@ -417,25 +415,130 @@ static int epf_virtnet_epc_xfer(struct epf_virtnet *vnet, phys_addr_t pci, void 
 	return 0;
 }
 
-static int epf_virtnet_send_packet(struct epf_virtnet *vnet, void *buf,
-				   size_t len)
+static int epf_virtnet_dma_single(struct epf_virtnet *vnet, phys_addr_t pci,
+				  dma_addr_t dma, size_t len,
+				  void (*callback)(void *param), void *param,
+				  enum dma_transfer_direction dir)
+{
+	struct dma_async_tx_descriptor *desc;
+	int err;
+	dma_cookie_t cookie;
+	unsigned long flags = DMA_PREP_FENCE;
+	struct dma_chan *chan = vnet->tx_dma_chan;
+	struct dma_slave_config sconf = {.dst_addr = pci};
+
+	err = dmaengine_slave_config(chan, &sconf);
+	if (err)
+		goto failed;
+
+	if (callback)
+		flags |= DMA_PREP_INTERRUPT;
+
+	desc = dmaengine_prep_slave_single(chan, dma, len, dir, flags);
+	if (!desc) {
+		err = -EIO;
+		goto failed;
+	}
+
+	desc->callback = callback;
+	desc->callback_param = param;
+
+	cookie = dmaengine_submit(desc);
+
+	err = dma_submit_error(cookie);
+	if (err)
+		goto failed;
+
+	dma_async_issue_pending(chan);
+
+	return 0;
+
+failed:
+	return err;
+}
+
+struct epf_virtnet_tx_cb_param {
+	struct epf_virtnet *vnet;
+	dma_addr_t dma_data, dma_hdr;
+	struct vring_used_elem *used_elems;
+	unsigned num_elems;
+	size_t dma_data_size;
+	struct virtio_net_hdr_mrg_rxbuf *hdr;
+};
+
+struct epf_virtnet_skb_cb {
+	struct epf_virtnet_tx_cb_param *param;
+};
+
+static void epf_virtnet_tx_cb(void *p)
+{
+	struct sk_buff *skb = container_of(p, struct sk_buff, cb);
+	struct epf_virtnet_skb_cb *cb = p;
+	struct epf_virtnet_tx_cb_param *param = cb->param;
+	struct epf_virtnet *vnet = param->vnet;
+	struct device *dma_dev = vnet->epf->epc->dev.parent;
+
+	vringh_complete_multi_iomem(&vnet->tx_vrh, param->used_elems,
+				    param->num_elems);
+
+	napi_consume_skb(skb, 0);
+
+	queue_work(vnet->irq_wq, &vnet->raise_irq_work);
+
+	dma_unmap_single(dma_dev, param->dma_data, param->dma_data_size,
+			 DMA_MEM_TO_DEV);
+	dma_unmap_single(dma_dev, param->dma_hdr,
+			 sizeof(struct virtio_net_hdr_mrg_rxbuf),
+			 DMA_MEM_TO_DEV);
+
+	kfree(param->used_elems);
+	kfree(param);
+}
+
+static int epf_virtnet_send_packet(struct epf_virtnet *vnet,
+				   struct sk_buff *skb)
 {
 	int err, remain;
-	struct virtio_net_hdr_mrg_rxbuf hdr = {
-		.hdr.flags = 0,
-		.hdr.gso_type = VIRTIO_NET_HDR_GSO_NONE,
-		.num_buffers = 0,
-	};
-	u64 hdr_addr;
+	struct virtio_net_hdr_mrg_rxbuf *hdr;
+	u64 head_pci_addr;
+	struct device *dma_dev = vnet->epf->epc->dev.parent;
+	dma_addr_t dma_local, dma_data, dma_hdr_addr;
+	struct vring_used_elem *tx_used_elems;
+	struct epf_virtnet_tx_cb_param *param;
+	struct epf_virtnet_skb_cb *cb = (struct epf_virtnet_skb_cb *)skb->cb;
 
-	remain = len;
+	param = kmalloc(sizeof *param, GFP_KERNEL);
+	if (!param)
+		return -ENOMEM;
+
+	cb->param = param;
+
+	hdr = kzalloc(sizeof *hdr, GFP_KERNEL);
+	if (!hdr)
+		return -ENOMEM;
+
+	tx_used_elems = kmalloc_array(8, sizeof *tx_used_elems, GFP_KERNEL);
+	if (!tx_used_elems)
+		return -ENOMEM;
+
+	dma_data = dma_local =
+		dma_map_single(dma_dev, skb->data, skb->len, DMA_MEM_TO_DEV);
+	if (dma_mapping_error(dma_dev, dma_local))
+		return -ENOMEM;
+
+	hdr->num_buffers = 0;
+	hdr->hdr.flags = 0;
+	hdr->hdr.gso_type = VIRTIO_NET_HDR_GSO_NONE;
+
+	remain = skb->len;
 	while (remain) {
 		u32 desc_len, data_len, offset, copy_len;
 		u64 addr;
 		u16 head;
 
-		err = vringh_getdesc_iomem(&vnet->tx_vrh, NULL, &vnet->txiov, &head, GFP_KERNEL);
-		if (err < 0 ) {
+		err = vringh_getdesc_iomem(&vnet->tx_vrh, NULL, &vnet->txiov,
+					   &head, GFP_KERNEL);
+		if (err < 0) {
 			pr_err("failed the vringh_getesc_iomem\n");
 			return err;
 		} else if (!err) {
@@ -446,40 +549,47 @@ static int epf_virtnet_send_packet(struct epf_virtnet *vnet, void *buf,
 		addr = (u64)vnet->txiov.iov[vnet->txiov.i].iov_base;
 		desc_len = vnet->txiov.iov[vnet->txiov.i].iov_len;
 
-		if (hdr.num_buffers == 0)
-			hdr_addr = addr;
+		if (hdr->num_buffers == 0)
+			head_pci_addr = addr;
 
-		offset = hdr.num_buffers == 0 ? sizeof hdr : 0;
+		offset = hdr->num_buffers == 0 ? sizeof *hdr : 0;
 		copy_len = desc_len - offset;
-		if (copy_len > remain) {
+		if (copy_len > remain)
 			copy_len = remain;
-		}
 
-		err = epf_virtnet_epc_xfer(vnet, addr + offset, buf, copy_len, true);
+		err = epf_virtnet_dma_single(vnet, addr + offset, dma_local,
+						copy_len, NULL, NULL, DMA_MEM_TO_DEV);
 		if (err)
-			return -EIO;
+			return err;
 
 		data_len = copy_len + offset;
 
-		buf += copy_len;
+		dma_local += copy_len;
 		remain -= copy_len;
 
-		vnet->tx_used_elems[hdr.num_buffers].id = head;
-		vnet->tx_used_elems[hdr.num_buffers].len = data_len;
+		tx_used_elems[hdr->num_buffers].id = head;
+		tx_used_elems[hdr->num_buffers].len = data_len;
 
-		hdr.num_buffers++;
+		hdr->num_buffers++;
 	}
 
-	err = epf_virtnet_epc_xfer(vnet, hdr_addr, &hdr, sizeof hdr, true);
-	if (err)
-		return -EIO;
+	dma_hdr_addr = dma_map_single(dma_dev, hdr, sizeof *hdr, DMA_MEM_TO_DEV);
+	if (dma_mapping_error(dma_dev, dma_hdr_addr))
+		return -ENOMEM;
 
-	if(hdr.num_buffers > 4)
-		pr_err("not enough buffers\n");
+	param->vnet = vnet;
+	param->used_elems = tx_used_elems;
+	param->num_elems = hdr->num_buffers;
+	param->dma_data = dma_data;
+	param->dma_data_size = skb->len;
+	param->dma_hdr = dma_hdr_addr;
 
-	vringh_complete_multi_iomem(&vnet->tx_vrh, vnet->tx_used_elems, hdr.num_buffers);
+	if (hdr->num_buffers > 8)
+		pr_err("not enough used_elems buffer\n");
 
-	return 0;
+	return epf_virtnet_dma_single(vnet, head_pci_addr,
+					 dma_hdr_addr, sizeof *hdr,
+					 epf_virtnet_tx_cb, cb, DMA_MEM_TO_DEV);
 }
 
 static void epf_virtnet_tx_handler(struct work_struct *work)
@@ -488,23 +598,14 @@ static void epf_virtnet_tx_handler(struct work_struct *work)
 		container_of(work, struct epf_virtnet, tx_work);
 	struct sk_buff *skb;
 	int res = 0;
-	bool is_send = false;
-
-	while((skb = skb_dequeue(&vnet->txq))) {
-
-		res = epf_virtnet_send_packet(vnet, skb->data, skb->len);
+	while ((skb = skb_dequeue(&vnet->txq))) {
+		res = epf_virtnet_send_packet(vnet, skb);
 		if (res == -EAGAIN) {
 			dev_kfree_skb_any(skb);
 			skb = NULL;
 			continue;
 		}
-
-		napi_consume_skb(skb, 0);
-		is_send = true;
 	}
-
-	if (is_send)
-		queue_work(vnet->irq_wq, &vnet->raise_irq_work);
 }
 
 static netdev_tx_t local_ndev_start_xmit(struct sk_buff *skb,
@@ -761,11 +862,68 @@ static int epf_virtnet_create_netdev(struct pci_epf *epf)
 	return 0;
 }
 
+struct epf_dma_filter_param {
+	struct device *dev;
+	u32 dma_mask;
+};
+
+static bool epf_virtnet_dma_filter(struct dma_chan *chan, void *param)
+{
+	struct epf_dma_filter_param *fparam = param;
+	struct dma_slave_caps caps;
+
+	memset(&caps, 0, sizeof caps);
+	dma_get_slave_caps(chan, &caps);
+
+	return chan->device->dev == fparam->dev &&
+	       (fparam->dma_mask & caps.directions);
+}
+static int epf_virtnet_init_edma(struct epf_virtnet *vnet)
+{
+	struct dma_chan *dma_chan;
+	dma_cap_mask_t mask;
+	struct epf_dma_filter_param param;
+	struct device *dma_dev;
+
+	dma_dev = vnet->epf->epc->dev.parent;
+
+	dma_cap_zero(mask);
+	dma_cap_set(DMA_SLAVE, mask);
+
+	param.dev = vnet->epf->epc->dev.parent;
+	param.dma_mask = BIT(DMA_MEM_TO_DEV);
+
+	dma_chan = dma_request_channel(mask, epf_virtnet_dma_filter, &param);
+
+	vnet->tx_dma_chan = dma_chan;
+
+	//TODO setup for rx dma
+
+		//TODO err check
+
+	return 0;
+}
+
+static int epf_virtnet_init_dma(struct epf_virtnet *vnet)
+{
+	int err;
+
+	err = epf_virtnet_init_edma(vnet);
+	if (!err)
+		goto done;
+
+	// 	err = epf_virtnet_init_memcpy_dma(vnet);
+
+done:
+	return err;
+}
+
 static int epf_virtnet_bind(struct pci_epf *epf)
 {
 	int ret;
 	struct pci_epc *epc = epf->epc;
 	const struct pci_epc_features *epc_features;
+	struct epf_virtnet *vnet = epf_get_drvdata(epf);
 
 	ret = pci_epc_write_header(epc, epf->func_no, epf->vfunc_no,
 				   epf->header);
@@ -787,6 +945,10 @@ static int epf_virtnet_bind(struct pci_epf *epf)
 	}
 
 	epf_virtnet_init_config(epf);
+
+	ret = epf_virtnet_init_dma(vnet);
+	if (ret)
+		pr_err("failed to setup dma\n");
 
 	ret = epf_virtnet_create_netdev(epf);
 	if (ret) {

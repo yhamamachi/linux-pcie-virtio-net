@@ -52,7 +52,7 @@ struct epf_virtnet {
 	struct sk_buff_head rxq;
 
 	dma_addr_t dma_hdr_addr;
-	struct dma_chan *tx_dma_chan; //, *rx_dma_chan;
+	struct dma_chan *tx_dma_chan, *rx_dma_chan;
 };
 
 struct local_ndev_adapter {
@@ -376,45 +376,6 @@ static int local_ndev_close(struct net_device *dev)
 	return 0;
 }
 
-static int epf_virtnet_epc_xfer(struct epf_virtnet *vnet, phys_addr_t pci, void *buf,
-				size_t size, bool write)
-{
-	void __iomem *epc_mem;
-	phys_addr_t epc_phys;
-	struct pci_epf *epf = vnet->epf;
-	struct pci_epc *epc = epf->epc;
-	u64 aaddr, pcioff;
-	size_t asize;
-	int err;
-
-	err = pci_epc_mem_align(epc, pci, size, &aaddr, &asize);
-	if (err) {
-		pr_err("invalid address\n");
-		return -EIO;
-	}
-	pcioff = pci - aaddr;
-
-	epc_mem = pci_epc_mem_alloc_addr(epc, &epc_phys, asize);
-	if (!epc_mem)
-		return -ENOMEM;
-
-	err = pci_epc_map_addr(epc, epf->func_no, epf->vfunc_no,
-			epc_phys, aaddr, asize);
-	if (err)
-		return err;
-
-	if (write)
-		memcpy_toio(epc_mem + pcioff, buf, size);
-	else
-		memcpy_fromio(buf, epc_mem + pcioff, size);
-
-	pci_epc_unmap_addr(epc, epf->func_no, epf->vfunc_no, epc_phys);
-
-	pci_epc_mem_free_addr(epc, epc_phys, epc_mem, asize);
-
-	return 0;
-}
-
 static int epf_virtnet_dma_single(struct epf_virtnet *vnet, phys_addr_t pci,
 				  dma_addr_t dma, size_t len,
 				  void (*callback)(void *param), void *param,
@@ -628,45 +589,163 @@ static const struct net_device_ops epf_virtnet_ndev_ops = {
 	// 	.ndo_get_stats64 = virtnet_stats,
 };
 
-static void *local_ndev_receive(struct epf_virtnet *vnet, size_t *total_size)
+struct epf_virtnet_rx_cb_param {
+	struct epf_virtnet *vnet;
+	u16 head;
+	u32 total_len;
+	struct _bufs {
+		struct page* page;
+		dma_addr_t dma_addr;
+		u32 len;
+	} *bufs;
+	u16 bufs_len;
+};
+
+static void dma_async_rx_callback(void *p)
 {
-	void *buf, *cur;
-	int ret;
-	size_t size = 0;
-	struct vringh_kiov *riov = &vnet->rxiov;
+	struct epf_virtnet_rx_cb_param *param = p;
+	struct sk_buff *skb = NULL;
+	struct epf_virtnet *vnet = param->vnet;
+	struct device *dma_dev = vnet->epf->epc->dev.parent;
+	struct local_ndev_adapter *adapter = netdev_priv(vnet->ndev);
+
+	vringh_complete_iomem(&vnet->rx_vrh, param->head, param->total_len);
+
+	for (int i = 0; i < param->bufs_len; i++) {
+		struct _bufs *buf = &param->bufs[i];
+
+		dma_unmap_page(dma_dev, buf->dma_addr, PAGE_SIZE,
+			       DMA_DEV_TO_MEM);
+
+		if (!skb) {
+			skb = napi_build_skb(
+				page_address(buf->page),
+				SKB_DATA_ALIGN(buf->len) +
+					SKB_DATA_ALIGN(sizeof(
+						struct skb_shared_info)));
+			if (!skb) {
+				pr_err("failed to build skb\n");
+				return;
+			}
+		} else {
+			BUG();
+			skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags,
+					buf->page, 0, buf->len, PAGE_SIZE);
+		}
+	}
+
+	skb_put(skb, param->total_len);
+	skb->protocol = eth_type_trans(skb, adapter->dev);
+
+	skb_queue_tail(&vnet->rxq, skb);
+	napi_schedule(&adapter->napi);
+
+	kfree(param->bufs);
+	kfree(param);
+}
+
+static int dma_asyn_skb_recv(struct epf_virtnet *vnet)
+{
 	u16 head;
 	int err;
+	struct page *page;
+	struct vringh_kiov *riov = &vnet->rxiov;
+	u32 len, total_len = 0;
+	u64 addr;
+	dma_addr_t dma_addr;
+	struct epf_virtnet_rx_cb_param *param;
+	struct device *dma_dev = vnet->epf->epc->dev.parent;
 
-	buf = vnet->rx_bufs[vnet->rx_bufs_idx];
-	vnet->rx_bufs_idx = (vnet->rx_bufs_idx + 1) & EPF_VIRTNET_Q_MASK;
-
-	ret = vringh_getdesc_iomem(&vnet->rx_vrh, riov, NULL, &head,
+	err = vringh_getdesc_iomem(&vnet->rx_vrh, riov, NULL, &head,
 				   GFP_KERNEL);
-	if (ret < 0) {
+	if (err < 0) {
 		pr_err("Failed the vringh_getdesc\n");
-		return NULL;
-	} else if (!ret) {
-		return NULL;
+		return -EIO;
+	} else if (!err) {
+		return 0;
 	}
 
-	for (; riov->i < riov->used; riov->i++) {
-		u64 addr = (u64)riov->iov[riov->i].iov_base;
-		u32 len = riov->iov[riov->i].iov_len;
-
-		cur = buf + size;
-
-		err = epf_virtnet_epc_xfer(vnet, addr, cur, len, false);
-		if (err)
-			return NULL;
-
-		size += len;
+	len = riov->iov[riov->i].iov_len;
+	/* this code assumes that the first descriptor just has virtio-net header. */
+	if (len != sizeof (struct virtio_net_hdr_mrg_rxbuf)) {
+		BUG();
 	}
 
-	vringh_complete_iomem(&vnet->rx_vrh, head, size);
+	riov->i++;
 
-	*total_size = size;
+	param = kmalloc(sizeof(struct epf_virtnet_rx_cb_param *), GFP_KERNEL);
+	if (!param) {
+		pr_err("failed to allocate memory (param)\n");
+		return -ENOMEM;
+	}
 
-	return buf;
+	param->vnet = vnet;
+	param->head = head;
+
+	param->bufs_len = riov->used - riov->i;
+
+	param->bufs = kmalloc_array(sizeof param->bufs[0], param->bufs_len, GFP_KERNEL);
+	if (!param->bufs) {
+		pr_err("failed to allocate memory");
+		return -ENOMEM;
+	}
+
+	for (int i = 0; riov->i < riov->used; riov->i++, i++) {
+		addr = (u64)riov->iov[riov->i].iov_base;
+		len = riov->iov[riov->i].iov_len;
+		total_len += len;
+
+		page = alloc_pages(GFP_KERNEL, 1);
+		if (!page)
+			return -ENOMEM;
+
+		dma_addr = dma_map_page(dma_dev, page, 0, PAGE_SIZE, DMA_DEV_TO_MEM);
+
+		param->bufs[i].page = page;
+		param->bufs[i].len = len;
+		param->bufs[i].dma_addr = dma_addr;
+
+		{
+			struct dma_async_tx_descriptor *tx;
+			struct dma_slave_config sconf = {
+				.src_addr = addr,
+				.direction = DMA_DEV_TO_MEM,
+			};
+			enum dma_ctrl_flags flags = DMA_CTRL_ACK |
+				DMA_PREP_INTERRUPT |	DMA_PREP_FENCE;
+			dma_cookie_t cookie;
+
+			if (dmaengine_slave_config(vnet->rx_dma_chan, &sconf)) {
+				pr_err("DMA slave config fail\n");
+				return -EIO;
+			}
+			tx = dmaengine_prep_slave_single(vnet->rx_dma_chan,
+					dma_addr, len,
+					DMA_DEV_TO_MEM, flags);
+			if (!tx) {
+				pr_err("dmaengine_prep_slave_single err");
+				return -EIO;
+			}
+
+			if (riov->i == riov->used - 1) {
+				tx->callback = dma_async_rx_callback;
+				param->total_len = total_len;
+			}
+
+			tx->callback_param = param;
+
+			cookie = dmaengine_submit(tx);
+			err = dma_submit_error(cookie);
+			if (err) {
+				pr_err("dma submittion error\n");
+				return err;
+			}
+
+			dma_async_issue_pending(vnet->rx_dma_chan);
+		}
+	}
+
+	return 1;
 }
 
 static int local_ndev_rx_poll(struct napi_struct *napi, int budget)
@@ -689,70 +768,9 @@ static int local_ndev_rx_poll(struct napi_struct *napi, int budget)
 	return n_rx;
 }
 
-static void epf_virtnet_refill_rx_bufs(struct epf_virtnet *vnet)
-{
-	size_t u_idx = vnet->rx_bufs_used_idx;
-	size_t idx = vnet->rx_bufs_idx;
-
-	while(u_idx != idx) {
-		struct page* p = dev_alloc_pages(1);
-		if (!p) {
-			pr_err("failed to allocate rx buffer");
-			return;
-		}
-
-		vnet->rx_bufs[u_idx] = page_address(p);
-
-
-		u_idx = (u_idx + 1) & EPF_VIRTNET_Q_MASK;
-	}
-
-	vnet->rx_bufs_used_idx = u_idx;
-}
-
 static int epf_virtnet_rx_packets(struct epf_virtnet *vnet)
 {
-	void *buf;
-	struct local_ndev_adapter *adapter = netdev_priv(vnet->ndev);
-	struct net_device *dev = adapter->dev;
-	struct sk_buff *skb;
-
-	unsigned int len;
-	size_t total_len;
-
-	buf = local_ndev_receive(vnet, &total_len);
-	if (!buf) {
-		return 0;
-	}
-
-	len = SKB_DATA_ALIGN(total_len) +
-	      SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
-	skb = napi_build_skb(buf, len);
-	if (!skb) {
-		pr_err("failed to build skb");
-		return -1;
-	}
-
-	skb_reserve(skb, sizeof(struct virtio_net_hdr_mrg_rxbuf));
-	skb_put(skb, total_len - sizeof(struct virtio_net_hdr_mrg_rxbuf));
-
-	skb->protocol = eth_type_trans(skb, dev);
-
-	skb_queue_tail(&vnet->rxq, skb);
-
-	napi_schedule(&adapter->napi);
-
-	{
-		const size_t rx_bufs_refill_threshold = 16;
-		int diff = vnet->rx_bufs_idx - vnet->rx_bufs_used_idx;
-		if (diff < 0)
-			diff += EPF_VIRTNET_Q_SIZE;
-
-		if (diff > rx_bufs_refill_threshold)
-			epf_virtnet_refill_rx_bufs(vnet);
-	}
-
-	return 1;
+	return dma_asyn_skb_recv(vnet);
 }
 
 static void epf_virtnet_raise_irq_handler(struct work_struct *work)
@@ -880,7 +898,6 @@ static bool epf_virtnet_dma_filter(struct dma_chan *chan, void *param)
 }
 static int epf_virtnet_init_edma(struct epf_virtnet *vnet)
 {
-	struct dma_chan *dma_chan;
 	dma_cap_mask_t mask;
 	struct epf_dma_filter_param param;
 	struct device *dma_dev;
@@ -893,13 +910,11 @@ static int epf_virtnet_init_edma(struct epf_virtnet *vnet)
 	param.dev = vnet->epf->epc->dev.parent;
 	param.dma_mask = BIT(DMA_MEM_TO_DEV);
 
-	dma_chan = dma_request_channel(mask, epf_virtnet_dma_filter, &param);
+	vnet->tx_dma_chan = dma_request_channel(mask, epf_virtnet_dma_filter, &param);
 
-	vnet->tx_dma_chan = dma_chan;
+	param.dma_mask = BIT(DMA_DEV_TO_MEM);
 
-	//TODO setup for rx dma
-
-		//TODO err check
+	vnet->rx_dma_chan = dma_request_channel(mask, epf_virtnet_dma_filter, &param);
 
 	return 0;
 }

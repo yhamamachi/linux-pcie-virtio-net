@@ -503,7 +503,9 @@ static int epf_virtnet_send_packet(struct epf_virtnet *vnet,
 			pr_err("failed the vringh_getesc_iomem\n");
 			return err;
 		} else if (!err) {
-			pr_debug("buffer full\n");
+			dma_unmap_page(dma_dev, dma_data, skb->len, DMA_MEM_TO_DEV);
+			kfree(hdr);
+			kfree(tx_used_elems);
 			return -EAGAIN;
 		}
 

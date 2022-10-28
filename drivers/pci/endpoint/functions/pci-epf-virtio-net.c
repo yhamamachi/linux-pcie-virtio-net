@@ -506,6 +506,7 @@ static int epf_virtnet_send_packet(struct epf_virtnet *vnet,
 			dma_unmap_page(dma_dev, dma_data, skb->len, DMA_MEM_TO_DEV);
 			kfree(hdr);
 			kfree(tx_used_elems);
+			vringh_abandon_iomem(&vnet->tx_vrh, hdr->num_buffers);
 			return -EAGAIN;
 		}
 

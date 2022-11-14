@@ -444,7 +444,8 @@ static void epf_virtnet_tx_cb(void *p)
 
 	napi_consume_skb(skb, 0);
 
-	queue_work(vnet->irq_wq, &vnet->raise_irq_work);
+	if (vringh_need_notify_iomem(&vnet->tx_vrh))
+		queue_work(vnet->irq_wq, &vnet->raise_irq_work);
 
 	dma_unmap_single(dma_dev, param->dma_data, param->dma_data_size,
 			 DMA_MEM_TO_DEV);
@@ -613,6 +614,9 @@ static void dma_async_rx_callback(void *p)
 	struct local_ndev_adapter *adapter = netdev_priv(vnet->ndev);
 
 	vringh_complete_iomem(&vnet->rx_vrh, param->head, param->total_len);
+
+	if (vringh_need_notify_iomem(&vnet->rx_vrh))
+		queue_work(vnet->irq_wq, &vnet->raise_irq_work);
 
 	for (int i = 0; i < param->bufs_len; i++) {
 		struct _bufs *buf = &param->bufs[i];

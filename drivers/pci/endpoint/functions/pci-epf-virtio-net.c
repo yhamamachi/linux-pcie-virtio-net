@@ -331,6 +331,8 @@ static int epf_virtnet_config_monitor(void *data)
 		return -ENOMEM;
 	}
 
+	vringh_notify_enable_iomem(&vnet->tx_vrh);
+	vringh_notify_enable_iomem(&vnet->rx_vrh);
 
 	// TODO spawn kernel thread for monitoring queue_notify
 	ret = epf_virtnet_spawn_notify_monitor(vnet);

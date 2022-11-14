@@ -39,14 +39,14 @@ struct epf_virtnet {
 	struct task_struct *monitor_notify_task;
 	void **rx_bufs;
 	size_t rx_bufs_idx, rx_bufs_used_idx;
-	struct workqueue_struct *tx_wq, *irq_wq;
+	struct workqueue_struct *tx_wq, *rx_wq, *irq_wq;
 	struct vringh rx_vrh, tx_vrh;
 	struct vringh_kiov txiov, rxiov;
 	struct vring_used_elem *rx_used_elems;
 
 	void __iomem *tx_epc_mem, *rx_epc_mem;
 	struct work_struct raise_irq_work;
-	struct work_struct tx_work;
+	struct work_struct tx_work, rx_work;
 
 	struct sk_buff_head txq;
 	struct sk_buff_head rxq;
@@ -175,11 +175,23 @@ err_alloc:
 }
 
 static int epf_virtnet_rx_packets(struct epf_virtnet *vnet);
+static void epf_virtnet_rx_handler(struct work_struct *work)
+{
+	struct epf_virtnet *vnet =
+		container_of(work, struct epf_virtnet, rx_work);
+	int err;
+
+
+	while((err = epf_virtnet_rx_packets(vnet)) > 0)
+		;
+	if (err < 0)
+		pr_err("failed to receive packet\n");
+}
+
 static int epf_virtnet_notify_monitor(void *data)
 {
 	struct epf_virtnet *vnet = data;
 	struct virtio_common_config *common_cfg = &vnet->pci_config->common_cfg;
-	int err;
 
 	while (true) {
 
@@ -189,17 +201,8 @@ static int epf_virtnet_notify_monitor(void *data)
 			;
 		iowrite16(2, &common_cfg->q_notify);
 
-		// check rx packets
-		while((err = epf_virtnet_rx_packets(vnet)) > 0)
-			;
-		if (err < 0) {
-			pr_err("failed to receive packet\n");
-			return -1;
-		}
-
-		// try to tx packet
-		if (skb_queue_len_lockless(&vnet->txq))
-			queue_work(vnet->tx_wq, &vnet->tx_work);
+		queue_work(vnet->rx_wq, &vnet->rx_work);
+		queue_work(vnet->tx_wq, &vnet->tx_work);
 	}
 
 	return 0;
@@ -455,6 +458,8 @@ static void epf_virtnet_tx_cb(void *p)
 
 	kfree(param->used_elems);
 	kfree(param);
+
+	queue_work(vnet->tx_wq, &vnet->tx_work);
 }
 
 static int epf_virtnet_send_packet(struct epf_virtnet *vnet,
@@ -657,9 +662,11 @@ static void dma_async_rx_callback(void *p)
 
 	kfree(param->bufs);
 	kfree(param);
+
+	queue_work(vnet->rx_wq, &vnet->rx_work);
 }
 
-static int dma_asyn_skb_recv(struct epf_virtnet *vnet)
+static int epf_virtnet_rx_packets(struct epf_virtnet *vnet)
 {
 	u16 head;
 	int err;
@@ -780,12 +787,9 @@ static int local_ndev_rx_poll(struct napi_struct *napi, int budget)
 	if (n_rx < budget)
 		napi_complete_done(&adapter->napi, n_rx);
 
-	return n_rx;
-}
+	queue_work(vnet->rx_wq, &vnet->rx_work);
 
-static int epf_virtnet_rx_packets(struct epf_virtnet *vnet)
-{
-	return dma_asyn_skb_recv(vnet);
+	return n_rx;
 }
 
 static void epf_virtnet_raise_irq_handler(struct work_struct *work)
@@ -882,6 +886,7 @@ static int epf_virtnet_create_netdev(struct pci_epf *epf)
 
 	INIT_WORK(&vnet->raise_irq_work, epf_virtnet_raise_irq_handler);
 	INIT_WORK(&vnet->tx_work, epf_virtnet_tx_handler);
+	INIT_WORK(&vnet->rx_work, epf_virtnet_rx_handler);
 
 	skb_queue_head_init(&vnet->txq);
 	skb_queue_head_init(&vnet->rxq);
@@ -1033,6 +1038,13 @@ static int epf_virtnet_probe(struct pci_epf *epf)
 	vnet->tx_wq = alloc_workqueue("epf-vnet/tx-wq",
 			WQ_MEM_RECLAIM | WQ_HIGHPRI | WQ_UNBOUND, 0);
 	if (!vnet->tx_wq) {
+		pr_err("failed to create workqueue\n");
+		return -ENOMEM;
+	}
+
+	vnet->rx_wq = alloc_workqueue("epf-vnet/rx-wq",
+			WQ_MEM_RECLAIM | WQ_HIGHPRI | WQ_UNBOUND, 0);
+	if (!vnet->rx_wq) {
 		pr_err("failed to create workqueue\n");
 		return -ENOMEM;
 	}

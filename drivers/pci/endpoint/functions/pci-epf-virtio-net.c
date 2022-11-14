@@ -1037,7 +1037,8 @@ static int epf_virtnet_probe(struct pci_epf *epf)
 		return -ENOMEM;
 	}
 
-	vnet->irq_wq = alloc_workqueue("epf-vnet-irq-wq", WQ_MEM_RECLAIM | WQ_HIGHPRI, 0);
+	vnet->irq_wq = alloc_workqueue("epf-vnet/irq-wq",
+			WQ_MEM_RECLAIM | WQ_HIGHPRI | WQ_UNBOUND, 0);
 	if (!vnet->irq_wq) {
 		return -ENOMEM;
 	}

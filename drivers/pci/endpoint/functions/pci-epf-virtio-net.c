@@ -559,6 +559,7 @@ static int epf_virtnet_send_packet(struct epf_virtnet *vnet,
 	if (hdr->num_buffers > 8)
 		pr_err("not enough used_elems buffer\n");
 
+	skb_tx_timestamp(skb);
 	return epf_virtnet_dma_single(vnet, head_pci_addr,
 					 dma_hdr_addr, sizeof *hdr,
 					 epf_virtnet_tx_cb, cb, DMA_MEM_TO_DEV);

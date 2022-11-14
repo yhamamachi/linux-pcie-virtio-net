@@ -1030,8 +1030,8 @@ static int epf_virtnet_probe(struct pci_epf *epf)
 	vnet->epf = epf;
 	epf_set_drvdata(epf, vnet);
 
-	vnet->tx_wq = alloc_workqueue("epf-vnet-tx-wq",
-			WQ_MEM_RECLAIM | WQ_HIGHPRI, 0);
+	vnet->tx_wq = alloc_workqueue("epf-vnet/tx-wq",
+			WQ_MEM_RECLAIM | WQ_HIGHPRI | WQ_UNBOUND, 0);
 	if (!vnet->tx_wq) {
 		pr_err("failed to create workqueue\n");
 		return -ENOMEM;

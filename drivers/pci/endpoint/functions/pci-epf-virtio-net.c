@@ -566,11 +566,18 @@ static void epf_virtnet_tx_handler(struct work_struct *work)
 	while ((skb = skb_dequeue(&vnet->txq))) {
 		res = epf_virtnet_send_packet(vnet, skb);
 		if (res == -EAGAIN) {
-			dev_kfree_skb_any(skb);
-			skb = NULL;
-			continue;
+			skb_queue_head(&vnet->txq, skb);
+			netif_stop_queue(vnet->ndev);
+			queue_work(vnet->irq_wq, &vnet->raise_irq_work);
+			break;
+		} else if (res < 0) {
+			pr_info("unknown error occured: %d\n", res);
 		}
 	}
+
+	if (!res && netif_queue_stopped(vnet->ndev))
+		netif_wake_queue(vnet->ndev);
+
 }
 
 static netdev_tx_t local_ndev_start_xmit(struct sk_buff *skb,

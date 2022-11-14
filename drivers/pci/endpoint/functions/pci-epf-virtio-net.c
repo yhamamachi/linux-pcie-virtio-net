@@ -208,7 +208,7 @@ static int epf_virtnet_notify_monitor(void *data)
 static int epf_virtnet_spawn_notify_monitor(struct epf_virtnet *vnet)
 {
 	vnet->monitor_notify_task = kthread_create(epf_virtnet_notify_monitor,
-						   vnet, "notify monitor");
+						   vnet, "epf-vnet/nmonit");
 	if (IS_ERR(vnet->monitor_notify_task)) {
 		pr_err("failed to create a kernel thread (notify monitor)\n");
 		return PTR_ERR(vnet->monitor_notify_task);
@@ -347,7 +347,7 @@ static int epf_virtnet_spawn_config_monitor(struct pci_epf *epf)
 	struct epf_virtnet *vnet = epf_get_drvdata(epf);
 
 	vnet->monitor_config_task = kthread_create(epf_virtnet_config_monitor,
-						   vnet, "config monitor");
+						   vnet, "epf-vnet/cmonit");
 	if (IS_ERR(vnet->monitor_config_task)) {
 		pr_err("Run pci configuration monitor failed\n");
 		return PTR_ERR(vnet->monitor_config_task);

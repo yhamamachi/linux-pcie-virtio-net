@@ -638,6 +638,7 @@ static void dma_async_rx_callback(void *p)
 	}
 
 	skb_put(skb, param->total_len);
+	skb_record_rx_queue(skb, 0);
 	skb->protocol = eth_type_trans(skb, adapter->dev);
 
 	skb_queue_tail(&vnet->rxq, skb);

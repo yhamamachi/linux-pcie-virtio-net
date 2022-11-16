@@ -151,7 +151,12 @@ static void __iomem *epf_virtnet_map_host_vq(struct epf_virtnet *vnet, u32 pfn)
 	struct pci_epc *epc = epf->epc;
 
 	vq_addr = (phys_addr_t)pfn << VIRTIO_PCI_QUEUE_ADDR_SHIFT;
-	vq_size = vring_size(EPF_VIRTNET_Q_SIZE, VIRTIO_PCI_VRING_ALIGN);
+	/* XXX: by a virtio spec and an impl(vring_size) returns sufficient size,
+	 * but we cannot access the avail_index located end of the ring correctly.
+	 * probably, the epc map has problem.
+	 */
+	vq_size = vring_size(EPF_VIRTNET_Q_SIZE, VIRTIO_PCI_VRING_ALIGN)
+		+ 100;
 
 	ioaddr = pci_epc_mem_alloc_addr(epc, &phys_addr, vq_size);
 	if (!ioaddr) {
@@ -292,7 +297,7 @@ static int epf_virtnet_config_monitor(void *data)
 	vring_init(&vring, EPF_VIRTNET_Q_SIZE, tmp,
 		   VIRTIO_PCI_VRING_ALIGN);
 
-	ret = vringh_init_kern(&vnet->tx_vrh, 0, EPF_VIRTNET_Q_SIZE, false,
+	ret = vringh_init_kern(&vnet->tx_vrh, BIT(VIRTIO_RING_F_EVENT_IDX), EPF_VIRTNET_Q_SIZE, false,
 			       vring.desc, vring.avail, vring.used);
 	if (ret) {
 		pr_err("failed to init tx vringh\n");
@@ -311,7 +316,7 @@ static int epf_virtnet_config_monitor(void *data)
 	vring_init(&vring, EPF_VIRTNET_Q_SIZE, tmp,
 		   VIRTIO_PCI_VRING_ALIGN);
 
-	ret = vringh_init_kern(&vnet->rx_vrh, 0, EPF_VIRTNET_Q_SIZE, false,
+	ret = vringh_init_kern(&vnet->rx_vrh, BIT(VIRTIO_RING_F_EVENT_IDX), EPF_VIRTNET_Q_SIZE, false,
 			       vring.desc, vring.avail, vring.used);
 	if (ret) {
 		pr_err("failed to init rx virtio ring\n");
@@ -447,9 +452,11 @@ static void epf_virtnet_tx_cb(void *p)
 	vringh_complete_multi_iomem(&vnet->tx_vrh, param->used_elems,
 				    param->num_elems);
 
+	vringh_notify_enable_iomem(&vnet->tx_vrh);
+
 	napi_consume_skb(skb, 0);
 
-	if (vringh_need_notify_iomem(&vnet->tx_vrh))
+	if (vringh_need_notify_iomem(&vnet->tx_vrh) && !work_busy(&vnet->raise_irq_work))
 		queue_work(vnet->irq_wq, &vnet->raise_irq_work);
 
 	dma_unmap_single(dma_dev, param->dma_data, param->dma_data_size,
@@ -460,8 +467,6 @@ static void epf_virtnet_tx_cb(void *p)
 
 	kfree(param->used_elems);
 	kfree(param);
-
-	queue_work(vnet->tx_wq, &vnet->tx_work);
 }
 
 static int epf_virtnet_send_packet(struct epf_virtnet *vnet,
@@ -629,8 +634,9 @@ static void dma_async_rx_callback(void *p)
 	struct local_ndev_adapter *adapter = netdev_priv(vnet->ndev);
 
 	vringh_complete_iomem(&vnet->rx_vrh, param->head, param->total_len);
+	vringh_notify_enable_iomem(&vnet->rx_vrh);
 
-	if (vringh_need_notify_iomem(&vnet->rx_vrh))
+	if (vringh_need_notify_iomem(&vnet->rx_vrh) && !work_busy(&vnet->raise_irq_work))
 		queue_work(vnet->irq_wq, &vnet->raise_irq_work);
 
 	for (int i = 0; i < param->bufs_len; i++) {
@@ -665,8 +671,6 @@ static void dma_async_rx_callback(void *p)
 
 	kfree(param->bufs);
 	kfree(param);
-
-	queue_work(vnet->rx_wq, &vnet->rx_work);
 }
 
 static int epf_virtnet_rx_packets(struct epf_virtnet *vnet)
@@ -790,8 +794,6 @@ static int local_ndev_rx_poll(struct napi_struct *napi, int budget)
 	if (n_rx < budget)
 		napi_complete_done(&adapter->napi, n_rx);
 
-	queue_work(vnet->rx_wq, &vnet->rx_work);
-
 	return n_rx;
 }
 
@@ -903,6 +905,7 @@ static bool epf_virtnet_dma_filter(struct dma_chan *chan, void *param)
 	return chan->device->dev == fparam->dev &&
 	       (fparam->dma_mask & caps.directions);
 }
+
 static int epf_virtnet_init_edma(struct epf_virtnet *vnet)
 {
 	dma_cap_mask_t mask;

@@ -860,22 +860,6 @@ static int epf_virtnet_create_netdev(struct pci_epf *epf)
 
 	ndev->needed_headroom = sizeof (struct virtio_net_hdr_mrg_rxbuf);
 
-	// TODO examine GFP frags GFP_ATOMIC or GFP_KERNEL
-	vnet->rx_bufs = kmalloc_array(sizeof (void *), EPF_VIRTNET_Q_SIZE, GFP_ATOMIC);
-	if (!vnet->rx_bufs) {
-		pr_err("failed to allocate rx buffer");
-		return -ENOMEM;
-	}
-
-	for(int i=0; i< EPF_VIRTNET_Q_SIZE; ++i) {
-		struct page* p = dev_alloc_pages(1);
-		if (!p) {
-			pr_err("failed to allocate rx buffer");
-			return -ENOMEM;
-		}
-		vnet->rx_bufs[i] = page_address(p);
-	}
-
 	// pci-epc core uses mutex.
 	err = dev_set_threaded(ndev, true);
 	if (err) {

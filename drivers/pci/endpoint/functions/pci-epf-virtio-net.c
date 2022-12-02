@@ -646,11 +646,7 @@ static void dma_async_rx_callback(void *p)
 			       DMA_DEV_TO_MEM);
 
 		if (!skb) {
-			skb = napi_build_skb(
-				page_address(buf->page),
-				SKB_DATA_ALIGN(buf->len) +
-					SKB_DATA_ALIGN(sizeof(
-						struct skb_shared_info)));
+			skb = napi_build_skb(page_address(buf->page), PAGE_SIZE * 2);
 			if (!skb) {
 				pr_err("failed to build skb\n");
 				return;

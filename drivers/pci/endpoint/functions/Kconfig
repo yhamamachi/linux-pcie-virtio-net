@@ -56,3 +56,14 @@ config PCI_EPF_VCON
 	  another virtual virtio-console device registers to endpoint system.
 	  Those devices are connected virtually and can communicate each other.
 
+config PCI_EPF_VNET
+	tristate "PCI Endpoint virtio-net driver"
+	depends on PCI_ENDPOINT
+	select VHOST_RING
+	select VHOST_IOMEM
+	select PCI_EPF_VIRTIO
+	help
+	  PCIe Endpoint virtio-net function implementation. This module enables to
+	  show the virtio-net as pci device to PCIe Host side, and, another
+	  virtio-net device show to local machine. Those devices can communicate
+	  each other.

@@ -8,3 +8,5 @@ obj-$(CONFIG_PCI_EPF_NTB)		+= pci-epf-ntb.o
 obj-$(CONFIG_PCI_EPF_VNTB) 		+= pci-epf-vntb.o
 obj-$(CONFIG_PCI_EPF_MHI)		+= pci-epf-mhi.o
 obj-$(CONFIG_PCI_EPF_VIRTIO)		+= pci-epf-virtio.o
+obj-$(CONFIG_PCI_EPF_VCON)		+= pci-epf-vcon.o
+obj-$(CONFIG_PCI_EPF_VNET)		+= pci-epf-vnet.o

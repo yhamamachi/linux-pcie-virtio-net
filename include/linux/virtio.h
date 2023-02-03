@@ -93,7 +93,7 @@ unsigned int virtqueue_get_vring_size(const struct virtqueue *vq);
 
 bool virtqueue_is_broken(const struct virtqueue *vq);
 
-const struct vring *virtqueue_get_vring(const struct virtqueue *vq);
+struct vring *virtqueue_get_vring(const struct virtqueue *vq);
 dma_addr_t virtqueue_get_desc_addr(const struct virtqueue *vq);
 dma_addr_t virtqueue_get_avail_addr(const struct virtqueue *vq);
 dma_addr_t virtqueue_get_used_addr(const struct virtqueue *vq);

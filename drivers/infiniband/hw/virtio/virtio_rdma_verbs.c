@@ -704,13 +704,12 @@ static inline u8 to_virtio_qp_type(u8 type)
 	}
 	return -1;
 }
-
-struct ib_qp *virtio_rdma_create_qp(struct ib_pd *ibpd,
+int virtio_rdma_create_qp(struct ib_qp *ibqp,
 				    struct ib_qp_init_attr *attr,
 				    struct ib_udata *udata)
 {
 	struct scatterlist in, out;
-	struct virtio_rdma_dev *vdev = to_vdev(ibpd->device);
+	struct virtio_rdma_dev *vdev = to_vdev(ibqp->device);
 	struct virtio_rdma_cmd_create_qp *cmd;
 	struct virtio_rdma_ack_create_qp *rsp;
 	struct virtio_rdma_qp *vqp = to_vqp(ibqp);
@@ -719,30 +718,23 @@ struct ib_qp *virtio_rdma_create_qp(struct ib_pd *ibpd,
 
 	if (attr->srq) {
 		pr_err("srq not supported now");
-		return ERR_PTR(-EOPNOTSUPP);
+		return -EOPNOTSUPP;
 	}
 
 	if (!atomic_add_unless(&vdev->num_qp, 1, vdev->ib_dev.attrs.max_qp))
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 
 	if (virtio_rdma_qp_chk_init(vdev, attr))
-		return ERR_PTR(-EINVAL);
+		return -EINVAL;
 
 	cmd = kzalloc(sizeof(*cmd), GFP_KERNEL);
 	if (!cmd)
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 
 	rsp = kzalloc(sizeof(*rsp), GFP_KERNEL);
 	if (!rsp) {
 		kfree(cmd);
-		return ERR_PTR(-ENOMEM);
-	}
-
-	vqp = kzalloc(sizeof(*vqp), GFP_KERNEL);
-	if (!vqp) {
-		kfree(cmd);
-		kfree(rsp);
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 	}
 
 	cmd->pdn = to_vpd(ibpd)->pd_handle;
@@ -765,8 +757,8 @@ struct ib_qp *virtio_rdma_create_qp(struct ib_pd *ibpd,
 				  VIRTIO_NET_CTRL_ROCE_CREATE_QP,
 				  &out, &in);
 	if (rc) {
-		ret = ERR_PTR(-EIO);
-		goto out_err;
+		ret = -EIO;
+		goto out;
 	}
 
 	vqp->type = udata ? VIRTIO_RDMA_TYPE_USER : VIRTIO_RDMA_TYPE_KERNEL;
@@ -785,7 +777,7 @@ struct ib_qp *virtio_rdma_create_qp(struct ib_pd *ibpd,
 		struct virtio_rdma_ucontext *uctx = rdma_udata_to_drv_context(udata,
 			struct virtio_rdma_ucontext, ibucontext);
 		uint32_t per_size;
-		
+
 		per_size = sizeof(struct virtio_rdma_sq_req) +
 				   sizeof(struct virtio_rdma_sge) * attr->cap.max_send_sge;
 		vqp->usq_buf_size = PAGE_ALIGN(per_size * attr->cap.max_send_wr);
@@ -794,7 +786,7 @@ struct ib_qp *virtio_rdma_create_qp(struct ib_pd *ibpd,
 						&uresp.sq_size, &uresp.svq_used_off,
 						&uresp.svq_size, &vqp->usq_dma_addr);
 		if (!vqp->usq_buf)
-			goto out_err;
+			goto out;
 
 		per_size = sizeof(struct virtio_rdma_rq_req) +
 				   sizeof(struct virtio_rdma_sge) * attr->cap.max_recv_sge;
@@ -807,7 +799,7 @@ struct ib_qp *virtio_rdma_create_qp(struct ib_pd *ibpd,
 			// TODO: pop sq entry
 			dma_free_coherent(vdev->vdev->dev.parent, vqp->usq_buf_size,
 							vqp->usq_buf, vqp->usq_dma_addr);
-			goto out_err;
+			goto out;
 		}
 
 		uresp.sq_offset = rdma_user_mmap_get_offset(&vqp->sq_entry->rdma_entry);
@@ -837,7 +829,6 @@ struct ib_qp *virtio_rdma_create_qp(struct ib_pd *ibpd,
 	pr_info("%s: qpn 0x%x wq %d rq %d\n", __func__, rsp->qpn,
 	        vqp->sq->vq->index, vqp->rq->vq->index);
 	vdev->qps[rsp->qpn] = vqp;
-	ret = &vqp->ibqp;
 	goto out;
 
 out_err_u:
@@ -847,8 +838,6 @@ out_err_u:
 					vqp->urq_buf, vqp->urq_dma_addr);
 	rdma_user_mmap_entry_remove(&vqp->sq_entry->rdma_entry);
 	rdma_user_mmap_entry_remove(&vqp->rq_entry->rdma_entry);
-out_err:
-	kfree(vqp);
 out:
 	kfree(rsp);
 	kfree(cmd);
@@ -1862,6 +1851,7 @@ static const struct ib_device_ops virtio_rdma_dev_ops = {
 	INIT_RDMA_OBJ_SIZE(ib_ah, virtio_rdma_ah, ibah),
 	INIT_RDMA_OBJ_SIZE(ib_cq, virtio_rdma_cq, ibcq),
 	INIT_RDMA_OBJ_SIZE(ib_pd, virtio_rdma_pd, ibpd),
+	INIT_RDMA_OBJ_SIZE(ib_qp, virtio_rdma_qp, ibqp),
 	INIT_RDMA_OBJ_SIZE(ib_ucontext, virtio_rdma_ucontext, ibucontext),
 };
 

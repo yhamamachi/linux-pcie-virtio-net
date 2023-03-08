@@ -186,6 +186,15 @@ const struct vm_guest_mode_params vm_guest_mode_params[] = {
 _Static_assert(sizeof(vm_guest_mode_params)/sizeof(struct vm_guest_mode_params) == NUM_VM_MODES,
 	       "Missing new mode params?");
 
+/*
+ * Initializes vm->vpages_valid to match the canonical VA space of the
+ * architecture.
+ *
+ * The default implementation is valid for architectures which split the
+ * range addressed by a single page table into a low and high region
+ * based on the MSB of the VA. On architectures with this behavior
+ * the VA region spans [0, 2^(va_bits - 1)), [-(2^(va_bits - 1), -1].
+ */
 __weak void vm_vaddr_populate_bitmap(struct kvm_vm *vm)
 {
 	sparsebit_set_num(vm->vpages_valid,
@@ -1416,10 +1425,10 @@ void virt_map(struct kvm_vm *vm, uint64_t vaddr, uint64_t paddr,
 
 	while (npages--) {
 		virt_pg_map(vm, vaddr, paddr);
+		sparsebit_set(vm->vpages_mapped, vaddr >> vm->page_shift);
+
 		vaddr += page_size;
 		paddr += page_size;
-
-		sparsebit_set(vm->vpages_mapped, vaddr >> vm->page_shift);
 	}
 }
 
@@ -1835,6 +1844,7 @@ static struct exit_reason {
 	{KVM_EXIT_X86_RDMSR, "RDMSR"},
 	{KVM_EXIT_X86_WRMSR, "WRMSR"},
 	{KVM_EXIT_XEN, "XEN"},
+	{KVM_EXIT_HYPERV, "HYPERV"},
 #ifdef KVM_EXIT_MEMORY_NOT_PRESENT
 	{KVM_EXIT_MEMORY_NOT_PRESENT, "MEMORY_NOT_PRESENT"},
 #endif
@@ -1931,9 +1941,6 @@ vm_paddr_t vm_phy_page_alloc(struct kvm_vm *vm, vm_paddr_t paddr_min,
 {
 	return vm_phy_pages_alloc(vm, 1, paddr_min, memslot);
 }
-
-/* Arbitrary minimum physical address used for virtual translation tables. */
-#define KVM_GUEST_PAGE_TABLE_MIN_PADDR 0x180000
 
 vm_paddr_t vm_alloc_page_table(struct kvm_vm *vm)
 {

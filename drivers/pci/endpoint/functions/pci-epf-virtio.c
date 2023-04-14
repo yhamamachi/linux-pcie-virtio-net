@@ -14,7 +14,7 @@ static void epf_virtio_unmap_vq(struct pci_epf *epf, void __iomem *vq_virt,
 {
 	size_t vq_size = vring_size(num, VIRTIO_PCI_VRING_ALIGN);
 
-	pci_epc_unmap_addr(epf->epc, epf->func_no, epf->vfunc_no, vq_phys,
+	pci_epc_unmap_aligned(epf->epc, epf->func_no, epf->vfunc_no, vq_phys,
 			   vq_virt, vq_size);
 }
 
@@ -26,7 +26,7 @@ static void __iomem *epf_virtio_map_vq(struct pci_epf *epf,
 
 	vq_size = vring_size(num, VIRTIO_PCI_VRING_ALIGN);
 
-	return pci_epc_map_addr(epf->epc, epf->func_no, epf->vfunc_no,
+	return pci_epc_map_aligned(epf->epc, epf->func_no, epf->vfunc_no,
 				   vq_pci_addr, vq_phys, vq_size);
 }
 
@@ -416,7 +416,7 @@ int epf_virtio_memcpy_kiov2kiov(struct epf_virtio *evio,
 		if (dir == DMA_MEM_TO_DEV) {
 			src = phys_to_virt(sbase);
 
-			dst = pci_epc_map_addr(epf->epc, epf->func_no,
+			dst = pci_epc_map_aligned(epf->epc, epf->func_no,
 					       epf->vfunc_no, dbase, &phys,
 					       slen);
 			if (IS_ERR(dst)) {
@@ -424,7 +424,7 @@ int epf_virtio_memcpy_kiov2kiov(struct epf_virtio *evio,
 				return PTR_ERR(dst);
 			}
 		} else {
-			src = pci_epc_map_addr(epf->epc, epf->func_no,
+			src = pci_epc_map_aligned(epf->epc, epf->func_no,
 					       epf->vfunc_no, sbase, &phys,
 					       slen);
 			if (IS_ERR(src)) {
@@ -438,10 +438,10 @@ int epf_virtio_memcpy_kiov2kiov(struct epf_virtio *evio,
 		memcpy_fromio(dst, src, slen);
 
 		if (dir == DMA_MEM_TO_DEV) {
-			pci_epc_unmap_addr(epf->epc, epf->func_no,
+			pci_epc_unmap_aligned(epf->epc, epf->func_no,
 					   epf->vfunc_no, phys, dst, slen);
 		} else {
-			pci_epc_unmap_addr(epf->epc, epf->func_no,
+			pci_epc_unmap_aligned(epf->epc, epf->func_no,
 					   epf->vfunc_no, phys, src, slen);
 		}
 	}

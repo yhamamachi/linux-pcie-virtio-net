@@ -37,3 +37,10 @@ config PCI_EPF_VNTB
 	  between PCI Root Port and PCIe Endpoint.
 
 	  If in doubt, say "N" to disable Endpoint NTB driver.
+
+config PCI_EPF_VIRTIO
+	tristate
+	depends on PCI_ENDPOINT
+	select VHOST_RING_IOMEM
+	help
+	  Helpers to implement PCI virtio Endpoint function

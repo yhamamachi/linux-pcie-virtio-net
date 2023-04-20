@@ -82,6 +82,7 @@ struct virtio_rdma_user_mmap_entry {
 	uint8_t type;
 	struct virtqueue *queue;
 	void *ubuf;
+	phys_addr_t ubuf_phys;
 	uint64_t ubuf_size;
 };
 

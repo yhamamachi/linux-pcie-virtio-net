@@ -449,4 +449,104 @@ int epf_virtio_memcpy_kiov2kiov(struct epf_virtio *evio,
 	return 0;
 }
 
+bool epf_dma_filter(struct dma_chan *chan, void *param)
+{
+	struct epf_dma_filter_param *fparam = param;
+	struct dma_slave_caps caps;
+
+	memset(&caps, 0, sizeof(caps));
+	dma_get_slave_caps(chan, &caps);
+
+	return chan->device->dev == fparam->dev &&
+	       fparam->dma_mask & caps.directions;
+}
+
+struct dma_chan *epf_request_dma_chan(struct device *dma_dev,
+				      enum dma_transfer_direction dir)
+{
+	struct epf_dma_filter_param param;
+	dma_cap_mask_t mask;
+
+	dma_cap_zero(mask);
+	dma_cap_set(DMA_SLAVE, mask);
+
+	param.dev = dma_dev;
+	param.dma_mask = BIT(dir);
+
+	return dma_request_channel(mask, epf_dma_filter, &param);
+}
+
+static struct dma_async_tx_descriptor *
+epf_virtio_prep_dma(struct dma_chan *chan, phys_addr_t src, phys_addr_t dst,
+		    size_t len, enum dma_transfer_direction dir,
+		    unsigned long flags)
+{
+	struct dma_slave_config sconf;
+	dma_addr_t dma;
+	int err;
+
+	if (dir == DMA_MEM_TO_DEV) {
+		sconf.dst_addr = dst;
+		dma = src;
+	} else {
+		sconf.src_addr = src;
+		dma = dst;
+	}
+
+	err = dmaengine_slave_config(chan, &sconf);
+	if (unlikely(err))
+		return NULL;
+
+	return dmaengine_prep_slave_single(chan, dma, len, dir, flags);
+}
+
+int epf_virtio_dma_kiov2kiov(struct dma_chan *chan, struct vringh_kiov *siov,
+			     struct vringh_kiov *diov, void (*callback)(void *),
+			     void *param, enum dma_transfer_direction dir)
+{
+	size_t slen, dlen;
+	u64 sbase, dbase;
+	unsigned long flags;
+	void (*cb)(void *) = NULL;
+	dma_cookie_t cookie;
+	struct dma_async_tx_descriptor *desc;
+
+	for (; siov->i < siov->used; siov->i++, diov->i++) {
+		slen = siov->iov[siov->i].iov_len;
+		sbase = (u64)siov->iov[siov->i].iov_base;
+		dlen = diov->iov[diov->i].iov_len;
+		dbase = (u64)diov->iov[diov->i].iov_base;
+
+		if (dlen < slen) {
+			pr_info("not enough buffer\n");
+			return -EINVAL;
+		}
+
+		if (siov->i == siov->used - 1) {
+			flags = DMA_PREP_INTERRUPT;
+			cb = callback;
+		}
+
+		desc = epf_virtio_prep_dma(chan, sbase, dbase, slen, dir,
+					   flags);
+		if (!desc) {
+			pr_err("failed to setup dma");
+			return -EIO;
+		}
+
+		desc->callback = cb;
+		desc->callback_param = param;
+
+		cookie = dmaengine_submit(desc);
+		if (unlikely(dma_submit_error(cookie))) {
+			pr_err("failed to submit dma");
+			return -EIO;
+		}
+
+		dma_async_issue_pending(chan);
+	}
+
+	return 0;
+}
+
 MODULE_LICENSE("GPL");

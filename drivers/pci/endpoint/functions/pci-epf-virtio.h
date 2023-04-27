@@ -124,4 +124,17 @@ int epf_virtio_memcpy_kiov2kiov(struct epf_virtio *evio,
 				struct vringh_kiov *diov,
 				enum dma_transfer_direction dir);
 
+struct epf_dma_filter_param {
+	struct device *dev;
+	u32 dma_mask;
+};
+
+bool epf_dma_filter(struct dma_chan *chan, void *param);
+struct dma_chan *epf_request_dma_chan(struct device *dma_dev,
+				      enum dma_transfer_direction dir);
+
+int epf_virtio_dma_kiov2kiov(struct dma_chan *chan, struct vringh_kiov *siov,
+			     struct vringh_kiov *diov, void (*callback)(void *),
+			     void *param, enum dma_transfer_direction dir);
+
 #endif /* __PCI_EPF_VIRTIO_H__ */

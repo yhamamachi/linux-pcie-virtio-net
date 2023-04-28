@@ -512,7 +512,7 @@ struct ib_mr *virtio_rdma_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 	cmd->virt_addr = virt_addr;
 	cmd->npages = npages;
 
-	sg_init_one(&out, cmd, sizeof(*cmd));
+	sg_init_one(&out, cmd, cmd_sz);
 	sg_init_one(&in, rsp, sizeof(*rsp));
 
 	if (virtio_rdma_exec_cmd(to_vdev(pd->device),

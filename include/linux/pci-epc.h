@@ -21,7 +21,7 @@ enum pci_epc_interface_type {
 
 enum pci_epc_irq_type {
 	PCI_EPC_IRQ_UNKNOWN,
-	PCI_EPC_IRQ_LEGACY,
+	PCI_EPC_IRQ_INTX,
 	PCI_EPC_IRQ_MSI,
 	PCI_EPC_IRQ_MSIX,
 };
@@ -54,7 +54,7 @@ pci_epc_interface_string(enum pci_epc_interface_type type)
  *	     MSI-X capability register
  * @get_msix: ops to get the number of MSI-X interrupts allocated by the RC
  *	     from the MSI-X capability register
- * @raise_irq: ops to raise a legacy, MSI or MSI-X interrupt
+ * @raise_irq: ops to raise an INTx, MSI or MSI-X interrupt
  * @map_msi_irq: ops to map physical address to MSI address and return MSI data
  * @start: ops to start the PCI link
  * @stop: ops to stop the PCI link

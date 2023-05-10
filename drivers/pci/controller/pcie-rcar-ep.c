@@ -408,7 +408,7 @@ static int rcar_pcie_ep_raise_irq(struct pci_epc *epc, u8 fn, u8 vfn,
 	struct rcar_pcie_endpoint *ep = epc_get_drvdata(epc);
 
 	switch (type) {
-	case PCI_EPC_IRQ_LEGACY:
+	case PCI_EPC_IRQ_INTX:
 		return rcar_pcie_ep_assert_intx(ep, fn, 0);
 
 	case PCI_EPC_IRQ_MSI:

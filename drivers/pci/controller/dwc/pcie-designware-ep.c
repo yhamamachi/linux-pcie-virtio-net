@@ -668,6 +668,9 @@ void dw_pcie_ep_exit(struct dw_pcie_ep *ep)
 	struct dw_pcie *pci = to_dw_pcie_from_ep(ep);
 	struct pci_epc *epc = ep->epc;
 
+	if (ep->ops->ep_deinit)
+		ep->ops->ep_deinit(ep);
+
 	dw_pcie_edma_remove(pci);
 
 	if (ep->intx_mem)
@@ -780,6 +783,9 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 
 	ep->phys_base = res->start;
 	ep->addr_size = resource_size(res);
+
+	if (ep->ops->ep_pre_init)
+		ep->ops->ep_pre_init(ep);
 
 	dw_pcie_version_detect(pci);
 

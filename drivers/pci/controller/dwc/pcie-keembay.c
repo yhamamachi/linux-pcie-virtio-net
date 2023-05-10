@@ -290,7 +290,7 @@ static int keembay_pcie_ep_raise_irq(struct dw_pcie_ep *ep, u8 func_no,
 	struct dw_pcie *pci = to_dw_pcie_from_ep(ep);
 
 	switch (type) {
-	case PCI_EPC_IRQ_LEGACY:
+	case PCI_EPC_IRQ_INTX:
 		/* Legacy interrupts are not supported in Keem Bay */
 		dev_err(pci->dev, "Legacy IRQ is not supported\n");
 		return -EINVAL;

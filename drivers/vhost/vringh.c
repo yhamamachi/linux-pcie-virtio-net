@@ -943,6 +943,18 @@ int vringh_init_kern(struct vringh *vrh, u64 features,
 }
 EXPORT_SYMBOL(vringh_init_kern);
 
+void vringh_reset_kern(struct vringh *vrh)
+{
+	vrh->completed = 0;
+	vrh->last_avail_idx = 0;
+	vrh->last_used_idx = 0;
+
+	vrh->vring.avail->idx = 0;
+	vrh->vring.used->idx = 0;
+}
+EXPORT_SYMBOL(vringh_reset_kern);
+
+
 /**
  * vringh_getdesc_kern - get next available descriptor from kernelspace ring.
  * @vrh: the kernelspace vring.
@@ -1806,5 +1818,16 @@ int vringh_need_notify_iomem(struct vringh *vrh)
 	return __vringh_need_notify(vrh, getu16_iomem);
 }
 EXPORT_SYMBOL(vringh_need_notify_iomem);
+
+void vringh_reset_iomem(struct vringh *vrh)
+{
+	vrh->completed = 0;
+	vrh->last_avail_idx = 0;
+	vrh->last_used_idx = 0;
+
+	iowrite16(0, &vrh->vring.avail->idx);
+	iowrite16(0, &vrh->vring.used->idx);
+}
+EXPORT_SYMBOL(vringh_reset_iomem);
 
 MODULE_LICENSE("GPL");

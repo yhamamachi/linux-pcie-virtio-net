@@ -191,6 +191,8 @@ int vringh_init_kern(struct vringh *vrh, u64 features,
 		     struct vring_avail *avail,
 		     struct vring_used *used);
 
+void vringh_reset_kern(struct vringh *vrh);
+
 static inline void vringh_kiov_init(struct vringh_kiov *kiov,
 				    struct kvec *kvec, unsigned num)
 {
@@ -357,5 +359,6 @@ bool vringh_notify_enable_iomem(struct vringh *vrh);
 void vringh_notify_disable_iomem(struct vringh *vrh);
 
 int vringh_need_notify_iomem(struct vringh *vrh);
+void vringh_reset_iomem(struct vringh *vrh);
 
 #endif /* _LINUX_VRINGH_H */

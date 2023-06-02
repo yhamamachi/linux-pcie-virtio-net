@@ -2933,6 +2933,14 @@ dma_addr_t virtqueue_get_desc_addr(const struct virtqueue *_vq)
 }
 EXPORT_SYMBOL_GPL(virtqueue_get_desc_addr);
 
+void *virtqueue_get_virt_desc_addr(const struct virtqueue *_vq)
+{
+	const struct vring_virtqueue *vq = to_vvq(_vq);
+
+	return vq->split.vring.desc;
+}
+EXPORT_SYMBOL_GPL(virtqueue_get_virt_desc_addr);
+
 dma_addr_t virtqueue_get_avail_addr(const struct virtqueue *_vq)
 {
 	const struct vring_virtqueue *vq = to_vvq(_vq);

@@ -390,6 +390,13 @@ void epf_virtio_iov_complete(struct epf_virtio *evio, int index, u16 head,
 	vringh_complete_iomem(vrh, head, total_len);
 }
 
+void epf_virtio_vringh_reset(struct epf_virtio *evio, int index)
+{
+	struct vringh *vrh = &evio->vrhs[index]->vrh;
+
+	vringh_reset_iomem(vrh);
+}
+
 int epf_virtio_memcpy_kiov2kiov(struct epf_virtio *evio,
 				struct vringh_kiov *siov,
 				struct vringh_kiov *diov,

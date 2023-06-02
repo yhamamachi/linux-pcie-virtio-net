@@ -137,4 +137,6 @@ int epf_virtio_dma_kiov2kiov(struct dma_chan *chan, struct vringh_kiov *siov,
 			     struct vringh_kiov *diov, void (*callback)(void *),
 			     void *param, enum dma_transfer_direction dir);
 
+void epf_virtio_vringh_reset(struct epf_virtio *evio, int index);
+
 #endif /* __PCI_EPF_VIRTIO_H__ */

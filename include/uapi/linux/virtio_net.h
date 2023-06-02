@@ -453,6 +453,8 @@ struct virtio_rdma_ack_query_port {
 struct virtio_rdma_cmd_create_cq {
 	/* Size of CQ */
 	__le32 cqe;
+	u64 virt;
+	u64 phys;
 };
 
 struct virtio_rdma_ack_create_cq {

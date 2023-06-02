@@ -217,6 +217,8 @@ static int virtio_rdma_create_cq(struct ib_cq *ibcq,
 	}
 
 	cmd->cqe = attr->cqe;
+	cmd->virt = (u64)vcq->queue;
+	cmd->phys = vcq->dma_addr,
 	sg_init_one(&out, cmd, sizeof(*cmd));
 	sg_init_one(&in, rsp, sizeof(*rsp));
 
@@ -1127,6 +1129,8 @@ static int virtio_rdma_mmap(struct ib_ucontext *ctx,
 	struct virtio_rdma_user_mmap_entry *entry;
 	uint64_t vq_size;
 	int rc = -EINVAL;
+	struct virtio_device *vdev;
+	struct device *dev;
 
 	if (vma->vm_start & (PAGE_SIZE - 1)) {
 		pr_warn("mmap not page aligned\n");
@@ -1143,21 +1147,31 @@ static int virtio_rdma_mmap(struct ib_ucontext *ctx,
 	vq_size = PAGE_ALIGN(vring_size(virtqueue_get_vring_size(entry->queue),
 			     SMP_CACHE_BYTES));
 
+	vdev = entry->queue->vdev;
+	dev = vdev->dev.parent;
+
+	void *virtqueue_get_virt_desc_addr(const struct virtqueue *vq);
+	unsigned long start = vma->vm_start;
+	unsigned long end = vma->vm_end;
+
+	vma->vm_pgoff = 0;
+
 	if (entry->type == VIRTIO_RDMA_MMAP_CQ) {
 		WARN_ON(vq_size + entry->ubuf_size !=
 			vma->vm_end - vma->vm_start);
 
-		// vring
-		rc = remap_pfn_range(vma, vma->vm_start,
-				PHYS_PFN(virtqueue_get_desc_addr(entry->queue)),
-				     vq_size, vma->vm_page_prot);
+		vma->vm_end = vma->vm_start + vq_size;
 
-		// user buffer
-		rc = remap_pfn_range(vma, vma->vm_start + vq_size,
-					 PHYS_PFN(entry->ubuf_phys),
-				     entry->ubuf_size, vma->vm_page_prot);
+		rc = dma_mmap_coherent(
+			dev, vma, virtqueue_get_virt_desc_addr(entry->queue),
+			virtqueue_get_desc_addr(entry->queue), vq_size);
+
+		vma->vm_start = vma->vm_end;
+		vma->vm_end = vma->vm_start + entry->ubuf_size;
+		rc = dma_mmap_coherent(dev, vma, entry->ubuf, entry->ubuf_phys, entry->ubuf_size);
+
 		if (rc) {
-			pr_warn("remap_pfn_range failed: %lu, %zu\n",
+			pr_warn("cq: remap_pfn_range failed: %lu, %zu\n",
 				vma->vm_pgoff, size);
 			goto out;
 		}
@@ -1170,31 +1184,36 @@ static int virtio_rdma_mmap(struct ib_ucontext *ctx,
 		WARN_ON(total_size != vma->vm_end - vma->vm_start);
 
 		// vring
-		rc = remap_pfn_range(vma, vma->vm_start,
-				PHYS_PFN(virtqueue_get_desc_addr(entry->queue)),
-				     vq_size, vma->vm_page_prot);
+		vma->vm_end = vma->vm_start + vq_size;
 
-		// user buffer
-		rc = remap_pfn_range(vma, vma->vm_start + vq_size,
-					 PHYS_PFN(entry->ubuf_phys),
-				     entry->ubuf_size, vma->vm_page_prot);
+		rc = dma_mmap_coherent(
+			dev, vma, virtqueue_get_virt_desc_addr(entry->queue),
+			virtqueue_get_desc_addr(entry->queue), vq_size);
 
+		vma->vm_start += vq_size;
+		vma->vm_end = vma->vm_start + entry->ubuf_size;
+		rc = dma_mmap_coherent(dev, vma, entry->ubuf, entry->ubuf_phys, entry->ubuf_size);
+
+		// TODO
 		// doorbell
-		if (uctx->dev->fast_doorbell) {
-			rc = io_remap_pfn_range(vma, vma->vm_start + vq_size +
-						entry->ubuf_size,
-			vmalloc_to_pfn(entry->queue->priv), PAGE_SIZE,
-				       vma->vm_page_prot);
-		}
+		// 		if (uctx->dev->fast_doorbell) {
+		// 			rc = io_remap_pfn_range(vma, vma->vm_start + vq_size +
+		// 						entry->ubuf_size,
+		// 			vmalloc_to_pfn(entry->queue->priv), PAGE_SIZE,
+		// 				       vma->vm_page_prot);
+		// 		}
 
 		if (rc) {
-			pr_warn("remap_pfn_range failed: %lu, %zu\n",
-				vma->vm_pgoff, size);
+			pr_warn("qp: remap_pfn_range failed: %lu, 0x%lx, %d\n",
+				vma->vm_pgoff, size, rc);
 			goto out;
 		}
 	} else {
 		pr_err("Invalid type");
 	}
+
+	vma->vm_start = start;
+	vma->vm_end = end;
 out:
 	rdma_user_mmap_entry_put(rdma_entry);
 

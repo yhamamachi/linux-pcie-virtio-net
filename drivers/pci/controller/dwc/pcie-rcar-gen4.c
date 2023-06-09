@@ -73,7 +73,7 @@ static int rcar_gen4_pcie_start_link(struct dw_pcie *dw)
 	 * PCIEINTSTS0 which is this controller specific register may not
 	 * be set.
 	 */
-	if (rcar->needs_speed_change) {
+	if (rcar->mode == DW_PCIE_RC_TYPE) {
 		for (i = 0; i < SPEED_CHANGE_MAX_RETRIES; i++) {
 			rcar_gen4_pcie_speed_change(dw);
 			msleep(100);

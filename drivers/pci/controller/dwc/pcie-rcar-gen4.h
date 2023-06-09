@@ -30,7 +30,6 @@ struct rcar_gen4_pcie {
 	enum dw_pcie_device_mode mode;
 	struct dw_pcie dw;
 	void __iomem *base;
-	bool needs_speed_change;
 };
 #define to_rcar_gen4_pcie(x)	dev_get_drvdata((x)->dev)
 

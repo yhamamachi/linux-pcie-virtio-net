@@ -103,7 +103,6 @@ static int rcar_gen4_pcie_probe(struct platform_device *pdev)
 		return err;
 
 	rcar->mode = DW_PCIE_RC_TYPE;
-	rcar->needs_speed_change = true;
 	err = rcar_gen4_add_dw_pcie_rp(rcar, pdev);
 	if (err < 0)
 		goto err_add;

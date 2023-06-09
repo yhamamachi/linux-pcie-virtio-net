@@ -48,18 +48,6 @@ static int rcar_gen4_pcie_link_up(struct dw_pcie *dw)
 	return (val & mask) == mask;
 }
 
-static bool rcar_gen4_pcie_check_current_link(struct dw_pcie *dw)
-{
-	u8 offset = dw_pcie_find_capability(dw, PCI_CAP_ID_EXP);
-	u32 lnkcap = dw_pcie_readl_dbi(dw, offset + PCI_EXP_LNKCAP);
-	u16 lnksta = dw_pcie_readw_dbi(dw, offset + PCI_EXP_LNKSTA);
-
-	if ((lnksta & PCI_EXP_LNKSTA_CLS) == (lnkcap & PCI_EXP_LNKCAP_SLS))
-		return true;
-
-	return false;
-}
-
 static void rcar_gen4_pcie_speed_change(struct dw_pcie *dw)
 {
 	u32 val;
@@ -89,7 +77,7 @@ static int rcar_gen4_pcie_start_link(struct dw_pcie *dw)
 		for (i = 0; i < SPEED_CHANGE_MAX_RETRIES; i++) {
 			rcar_gen4_pcie_speed_change(dw);
 			msleep(100);
-			if (rcar_gen4_pcie_check_current_link(dw))
+			if (dw_pcie_link_up(dw))
 				return 0;
 		}
 

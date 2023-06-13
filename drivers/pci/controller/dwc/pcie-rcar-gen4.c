@@ -19,7 +19,7 @@
 #define  APP_HOLD_PHY_RST	BIT(16)
 #define  APP_LTSSM_ENABLE	BIT(0)
 
-#define SPEED_CHANGE_MAX_RETRIES	5
+#define SPEED_CHANGE_MAX_RETRIES	500
 
 static void rcar_gen4_pcie_ltssm_enable(struct rcar_gen4_pcie *rcar,
 					bool enable)
@@ -91,12 +91,12 @@ printk("%s:%d\n", __func__, i);
 		}
 #else
 		for (i = 0; i < SPEED_CHANGE_MAX_RETRIES; i++) {
-			msleep(100);
 			rcar_gen4_pcie_speed_change(dw);
 			if (dw_pcie_link_up(dw)) {
 printk("%s:%d\n", __func__, i);
 				return 0;
 			}
+			msleep(1);
 		}
 #endif
 

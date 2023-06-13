@@ -74,12 +74,31 @@ static int rcar_gen4_pcie_start_link(struct dw_pcie *dw)
 	 * be set.
 	 */
 	if (rcar->mode == DW_PCIE_RC_TYPE) {
+#if 0
+		msleep(100);
 		for (i = 0; i < SPEED_CHANGE_MAX_RETRIES; i++) {
 			rcar_gen4_pcie_speed_change(dw);
 			msleep(100);
-			if (dw_pcie_link_up(dw))
+			if (dw_pcie_link_up(dw)) {
+printk("%s:%d\n", __func__, i);
 				return 0;
+			}
 		}
+#elif 0
+		if (!dw_pcie_wait_for_link(dw)) {
+			rcar_gen4_pcie_speed_change(dw);
+			return 0;
+		}
+#else
+		for (i = 0; i < SPEED_CHANGE_MAX_RETRIES; i++) {
+			msleep(100);
+			rcar_gen4_pcie_speed_change(dw);
+			if (dw_pcie_link_up(dw)) {
+printk("%s:%d\n", __func__, i);
+				return 0;
+			}
+		}
+#endif
 
 		return -ETIMEDOUT;	/* Failed */
 	}

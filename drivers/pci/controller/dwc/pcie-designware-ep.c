@@ -773,10 +773,12 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 
 	INIT_LIST_HEAD(&ep->func_list);
 
+printk("%s:%d\n", __func__, __LINE__);
 	ret = dw_pcie_get_resources(pci);
 	if (ret)
 		return ret;
 
+printk("%s:%d\n", __func__, __LINE__);
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "addr_space");
 	if (!res)
 		return -EINVAL;
@@ -784,6 +786,7 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 	ep->phys_base = res->start;
 	ep->addr_size = resource_size(res);
 
+printk("%s:%d\n", __func__, __LINE__);
 	if (ep->ops->ep_pre_init)
 		ep->ops->ep_pre_init(ep);
 
@@ -791,21 +794,25 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 
 	dw_pcie_iatu_detect(pci);
 
+printk("%s:%d\n", __func__, __LINE__);
 	ep->ib_window_map = devm_bitmap_zalloc(dev, pci->num_ib_windows,
 					       GFP_KERNEL);
 	if (!ep->ib_window_map)
 		return -ENOMEM;
 
+printk("%s:%d\n", __func__, __LINE__);
 	ep->ob_window_map = devm_bitmap_zalloc(dev, pci->num_ob_windows,
 					       GFP_KERNEL);
 	if (!ep->ob_window_map)
 		return -ENOMEM;
 
+printk("%s:%d\n", __func__, __LINE__);
 	addr = devm_kcalloc(dev, pci->num_ob_windows, sizeof(phys_addr_t),
 			    GFP_KERNEL);
 	if (!addr)
 		return -ENOMEM;
 	ep->outbound_addr = addr;
+printk("%s:%d\n", __func__, __LINE__);
 
 	epc = devm_pci_epc_create(dev, &epc_ops);
 	if (IS_ERR(epc)) {
@@ -813,6 +820,7 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 		return PTR_ERR(epc);
 	}
 
+printk("%s:%d\n", __func__, __LINE__);
 	ep->epc = epc;
 	epc_set_drvdata(epc, ep);
 
@@ -820,6 +828,7 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 	if (ret < 0)
 		epc->max_functions = 1;
 
+printk("%s:%d\n", __func__, __LINE__);
 	for (func_no = 0; func_no < epc->max_functions; func_no++) {
 		ep_func = devm_kzalloc(dev, sizeof(*ep_func), GFP_KERNEL);
 		if (!ep_func)
@@ -834,6 +843,7 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 		list_add_tail(&ep_func->list, &ep->func_list);
 	}
 
+printk("%s:%d\n", __func__, __LINE__);
 	if (ep->ops->ep_init)
 		ep->ops->ep_init(ep);
 
@@ -844,6 +854,7 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 		return ret;
 	}
 
+printk("%s:%d\n", __func__, __LINE__);
 	ep->msi_mem = pci_epc_mem_alloc_addr(epc, &ep->msi_mem_phys,
 					     epc->mem->window.page_size);
 	if (!ep->msi_mem) {
@@ -852,25 +863,30 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 		goto err_exit_epc_mem;
 	}
 
+printk("%s:%d\n", __func__, __LINE__);
 	ep->intx_mem = pci_epc_mem_alloc_addr(epc, &ep->intx_mem_phys,
 					      epc->mem->window.page_size);
 	if (!ep->intx_mem)
 		dev_warn(dev, "Failed to reserve memory for INTx\n");
 
+printk("%s:%d\n", __func__, __LINE__);
 	ret = dw_pcie_edma_detect(pci);
 	if (ret)
 		goto err_free_epc_mem_intx;
 
+printk("%s:%d\n", __func__, __LINE__);
 	if (ep->ops->get_features) {
 		epc_features = ep->ops->get_features(ep);
 		if (epc_features->core_init_notifier)
 			return 0;
 	}
 
+printk("%s:%d\n", __func__, __LINE__);
 	ret = dw_pcie_ep_init_complete(ep);
 	if (ret)
 		goto err_remove_edma;
 
+printk("%s:%d\n", __func__, __LINE__);
 	return 0;
 
 err_remove_edma:

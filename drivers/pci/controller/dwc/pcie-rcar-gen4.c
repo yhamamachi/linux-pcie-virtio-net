@@ -19,7 +19,7 @@
 #define  APP_HOLD_PHY_RST	BIT(16)
 #define  APP_LTSSM_ENABLE	BIT(0)
 
-#define SPEED_CHANGE_MAX_RETRIES	500
+#define SPEED_CHANGE_MAX_RETRIES	100
 
 static void rcar_gen4_pcie_ltssm_enable(struct rcar_gen4_pcie *rcar,
 					bool enable)
@@ -69,40 +69,17 @@ static int rcar_gen4_pcie_start_link(struct dw_pcie *dw)
 	rcar_gen4_pcie_ltssm_enable(rcar, true);
 
 	/*
-	 * Require direct speed change here. Otherwise RDLH_LINK_UP of
-	 * PCIEINTSTS0 which is this controller specific register may not
-	 * be set.
+	 * Require direct speed change with retrying here. Otherwise
+	 * RDLH_LINK_UP of PCIEINTSTS0 which is this controller specific
+	 * register may not be set.
 	 */
 	if (rcar->mode == DW_PCIE_RC_TYPE) {
-#if 0
-		msleep(100);
 		for (i = 0; i < SPEED_CHANGE_MAX_RETRIES; i++) {
 			rcar_gen4_pcie_speed_change(dw);
-			msleep(100);
-			if (dw_pcie_link_up(dw)) {
-printk("%s:%d\n", __func__, i);
+			if (dw_pcie_link_up(dw))
 				return 0;
-			}
+			msleep(1);
 		}
-#elif 0
-		if (!dw_pcie_wait_for_link(dw)) {
-			rcar_gen4_pcie_speed_change(dw);
-			return 0;
-		}
-#else
-		for (i = 0; i < SPEED_CHANGE_MAX_RETRIES; i++) {
-			rcar_gen4_pcie_speed_change(dw);
-			//msleep(1);			// about 5 times
-			//usleep_range(100, 110);	// about 400 times
-			if (dw_pcie_link_up(dw)) {
-printk("%s:%d\n", __func__, i);
-				return 0;
-			}
-			//msleep(1);			// about 5 times
-			usleep_range(100, 110);	// about 400 times
-			//usleep_range(500, 600);	// about 80 times
-		}
-#endif
 
 		return -ETIMEDOUT;	/* Failed */
 	}

@@ -92,11 +92,15 @@ printk("%s:%d\n", __func__, i);
 #else
 		for (i = 0; i < SPEED_CHANGE_MAX_RETRIES; i++) {
 			rcar_gen4_pcie_speed_change(dw);
+			//msleep(1);			// about 5 times
+			//usleep_range(100, 110);	// about 400 times
 			if (dw_pcie_link_up(dw)) {
 printk("%s:%d\n", __func__, i);
 				return 0;
 			}
-			msleep(1);
+			//msleep(1);			// about 5 times
+			usleep_range(100, 110);	// about 400 times
+			//usleep_range(500, 600);	// about 80 times
 		}
 #endif
 

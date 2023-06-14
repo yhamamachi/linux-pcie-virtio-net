@@ -105,6 +105,7 @@ printk("%s:%d\n", __func__, __LINE__);
 
 printk("%s:%d\n", __func__, __LINE__);
 	val = readl(rcar->base + PCIEMSR0);
+printk("%s:%d\n", __func__, __LINE__);
 	if (rcar->mode == DW_PCIE_RC_TYPE)
 		val |= DEVICE_TYPE_RC;
 	else if (rcar->mode == DW_PCIE_EP_TYPE)
@@ -112,10 +113,12 @@ printk("%s:%d\n", __func__, __LINE__);
 	else
 		return -EINVAL;
 
+printk("%s:%d\n", __func__, __LINE__);
 	if (dw->num_lanes < 4)
 		val |= BIFUR_MOD_SET_ON;
 
 	writel(val, rcar->base + PCIEMSR0);
+printk("%s:%d\n", __func__, __LINE__);
 
 	return reset_control_deassert(dw->core_rsts[DW_PCIE_PWR_RST].rstc);
 }

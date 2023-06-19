@@ -87,6 +87,7 @@ static int rcar_gen4_add_pcie_ep(struct rcar_gen4_pcie *rcar,
 	struct dw_pcie_ep *ep = &rcar->dw.ep;
 	int ret;
 
+	rcar->mode = DW_PCIE_EP_TYPE;
 	ep->ops = &pcie_ep_ops;
 
 	ret = dw_pcie_ep_init(ep);

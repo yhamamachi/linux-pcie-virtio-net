@@ -130,6 +130,8 @@ int rcar_gen4_pcie_prepare(struct rcar_gen4_pcie *rcar)
 		pm_runtime_disable(dev);
 	}
 
+	dw_pcie_cap_set(&rcar->dw, REQ_RES);
+
 	return err;
 }
 

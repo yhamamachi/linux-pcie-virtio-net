@@ -69,7 +69,6 @@ static int rcar_gen4_add_dw_pcie_rp(struct rcar_gen4_pcie *rcar,
 
 	pp->num_vectors = MAX_MSI_IRQS;
 	pp->ops = &rcar_gen4_pcie_host_ops;
-	dw_pcie_cap_set(dw, REQ_RES);
 
 	return dw_pcie_host_init(pp);
 }

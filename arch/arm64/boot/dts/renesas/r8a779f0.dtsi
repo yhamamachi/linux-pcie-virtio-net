@@ -827,7 +827,7 @@
 				     <GIC_SPI 425 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 429 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "dma", "sft_ce", "app";
-			clocks = <&cpg CPG_MOD 625>, <&pcie0_clkref>;
+			clocks = <&cpg CPG_MOD 625>, <&pcie1_clkref>;
 			clock-names = "core", "ref";
 			power-domains = <&sysc R8A779F0_PD_ALWAYS_ON>;
 			resets = <&cpg 625>;

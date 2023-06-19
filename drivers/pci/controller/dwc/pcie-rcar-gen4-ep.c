@@ -17,17 +17,8 @@ static void rcar_gen4_pcie_ep_pre_init(struct dw_pcie_ep *ep)
 {
 	struct dw_pcie *dw = to_dw_pcie_from_ep(ep);
 	struct rcar_gen4_pcie *rcar = to_rcar_gen4_pcie(dw);
-	int ret;
 	u8 val;
 
-printk("%s:%d\n", __func__, __LINE__);
-	ret = clk_bulk_prepare_enable(DW_PCIE_NUM_CORE_CLKS, dw->core_clks);
-	if (ret) {
-		dev_err(dw->dev, "Failed to enable ref clocks\n");
-		return;
-	}
-
-printk("%s:%d\n", __func__, __LINE__);
 	rcar_gen4_pcie_basic_init(rcar);
 
 	dw_pcie_dbi_ro_wr_en(dw);
@@ -98,7 +89,6 @@ static int rcar_gen4_add_pcie_ep(struct rcar_gen4_pcie *rcar,
 
 	ep->ops = &pcie_ep_ops;
 
-printk("%s:%d\n", __func__, __LINE__);
 	ret = dw_pcie_ep_init(ep);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to initialize endpoint\n");
@@ -119,12 +109,10 @@ static int rcar_gen4_pcie_ep_probe(struct platform_device *pdev)
 	struct rcar_gen4_pcie *rcar;
 	int err;
 
-printk("%s:%d\n", __func__, __LINE__);
 	rcar = rcar_gen4_pcie_devm_alloc(dev);
 	if (!rcar)
 		return -ENOMEM;
 
-printk("%s:%d\n", __func__, __LINE__);
 	err = rcar_gen4_pcie_get_resources(rcar, pdev);
 	if (err < 0) {
 		dev_err(dev, "Failed to request resource: %d\n", err);
@@ -133,17 +121,14 @@ printk("%s:%d\n", __func__, __LINE__);
 
 	platform_set_drvdata(pdev, rcar);
 
-printk("%s:%d\n", __func__, __LINE__);
 	err = rcar_gen4_pcie_prepare(rcar);
 	if (err < 0)
 		return err;
 
-printk("%s:%d\n", __func__, __LINE__);
 	err = rcar_gen4_add_pcie_ep(rcar, pdev);
 	if (err < 0)
 		goto err_add;
 
-printk("%s:%d\n", __func__, __LINE__);
 	return 0;
 
 err_add:

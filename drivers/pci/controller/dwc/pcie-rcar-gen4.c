@@ -99,11 +99,9 @@ int rcar_gen4_pcie_basic_init(struct rcar_gen4_pcie *rcar)
 	struct dw_pcie *dw = &rcar->dw;
 	u32 val;
 
-printk("%s:%d\n", __func__, __LINE__);
 	if (!reset_control_status(dw->core_rsts[DW_PCIE_PWR_RST].rstc))
 		reset_control_assert(dw->core_rsts[DW_PCIE_PWR_RST].rstc);
 
-printk("%s:%d\n", __func__, __LINE__);
 	val = readl(rcar->base + PCIEMSR0);
 	if (rcar->mode == DW_PCIE_RC_TYPE)
 		val |= DEVICE_TYPE_RC;

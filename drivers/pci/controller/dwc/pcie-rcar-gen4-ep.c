@@ -17,7 +17,14 @@ static void rcar_gen4_pcie_ep_pre_init(struct dw_pcie_ep *ep)
 {
 	struct dw_pcie *dw = to_dw_pcie_from_ep(ep);
 	struct rcar_gen4_pcie *rcar = to_rcar_gen4_pcie(dw);
+	int ret;
 	u8 val;
+
+	ret = clk_bulk_prepare_enable(DW_PCIE_NUM_CORE_CLKS, dw->core_clks);
+	if (ret) {
+		dev_err(dw->dev, "Failed to enable ref clocks\n");
+		return;
+	}
 
 	rcar_gen4_pcie_basic_init(rcar);
 

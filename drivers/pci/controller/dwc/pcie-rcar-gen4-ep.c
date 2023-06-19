@@ -30,21 +30,16 @@ printk("%s:%d\n", __func__, __LINE__);
 printk("%s:%d\n", __func__, __LINE__);
 	rcar_gen4_pcie_basic_init(rcar);
 
-printk("%s:%d\n", __func__, __LINE__);
 	dw_pcie_dbi_ro_wr_en(dw);
 
-printk("%s:%d\n", __func__, __LINE__);
 	/* Single function */
 	val = dw_pcie_readb_dbi(dw, PCI_HEADER_TYPE);
 	val &= ~PCI_HEADER_TYPE_MULTI_FUNC;
 	dw_pcie_writeb_dbi(dw, PCI_HEADER_TYPE, val);
 
-printk("%s:%d\n", __func__, __LINE__);
 	dw_pcie_dbi_ro_wr_dis(dw);
 
-printk("%s:%d\n", __func__, __LINE__);
 	writel(PCIEDMAINTSTSEN_INIT, rcar->base + PCIEDMAINTSTSEN);
-printk("%s:%d\n", __func__, __LINE__);
 }
 
 static void rcar_gen4_pcie_ep_deinit(struct dw_pcie_ep *ep)
@@ -104,7 +99,6 @@ static int rcar_gen4_add_pcie_ep(struct rcar_gen4_pcie *rcar,
 	ep->ops = &pcie_ep_ops;
 
 printk("%s:%d\n", __func__, __LINE__);
-	rcar->mode = DW_PCIE_EP_TYPE;
 	ret = dw_pcie_ep_init(ep);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to initialize endpoint\n");

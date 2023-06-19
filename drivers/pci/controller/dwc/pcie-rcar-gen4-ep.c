@@ -104,6 +104,7 @@ static int rcar_gen4_add_pcie_ep(struct rcar_gen4_pcie *rcar,
 	ep->ops = &pcie_ep_ops;
 
 printk("%s:%d\n", __func__, __LINE__);
+	dw_pcie_cap_set(&rcar->dw, REQ_RES);
 	rcar->mode = DW_PCIE_EP_TYPE;
 	ret = dw_pcie_ep_init(ep);
 	if (ret) {

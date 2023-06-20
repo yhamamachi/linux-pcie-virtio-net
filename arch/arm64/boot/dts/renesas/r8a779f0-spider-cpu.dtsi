@@ -137,8 +137,8 @@
 	status = "okay";
 };
 
-&pciec0_ep {
-	//reset-gpio = <&gpio_exp_20 0 GPIO_ACTIVE_LOW>;
+&pciec0 {
+	reset-gpio = <&gpio_exp_20 0 GPIO_ACTIVE_LOW>;
 	status = "okay";
 };
 

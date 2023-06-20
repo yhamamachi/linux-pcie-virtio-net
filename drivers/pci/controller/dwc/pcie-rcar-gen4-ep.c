@@ -30,9 +30,9 @@ static void rcar_gen4_pcie_ep_pre_init(struct dw_pcie_ep *ep)
 
 	dw_pcie_dbi_ro_wr_en(dw);
 
-	/* Single function */
+	/* Multi function */
 	val = dw_pcie_readb_dbi(dw, PCI_HEADER_TYPE);
-	val &= ~PCI_HEADER_TYPE_MULTI_FUNC;
+	val |= PCI_HEADER_TYPE_MULTI_FUNC;
 	dw_pcie_writeb_dbi(dw, PCI_HEADER_TYPE, val);
 
 	dw_pcie_dbi_ro_wr_dis(dw);

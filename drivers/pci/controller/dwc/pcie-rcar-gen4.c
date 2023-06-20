@@ -19,7 +19,8 @@
 #define  APP_HOLD_PHY_RST	BIT(16)
 #define  APP_LTSSM_ENABLE	BIT(0)
 
-#define SPEED_CHANGE_MAX_RETRIES	100
+#define RCAR_NUM_SPEED_CHANGE_RETRIES	10
+#define RCAR_MAX_LINK_SPEED		4
 
 static void rcar_gen4_pcie_ltssm_enable(struct rcar_gen4_pcie *rcar,
 					bool enable)
@@ -48,9 +49,10 @@ static int rcar_gen4_pcie_link_up(struct dw_pcie *dw)
 	return (val & mask) == mask;
 }
 
-static void rcar_gen4_pcie_speed_change(struct dw_pcie *dw)
+static bool rcar_gen4_pcie_speed_change(struct dw_pcie *dw)
 {
 	u32 val;
+	int i;
 
 	val = dw_pcie_readl_dbi(dw, PCIE_LINK_WIDTH_SPEED_CONTROL);
 	val &= ~PORT_LOGIC_SPEED_CHANGE;
@@ -59,29 +61,36 @@ static void rcar_gen4_pcie_speed_change(struct dw_pcie *dw)
 	val = dw_pcie_readl_dbi(dw, PCIE_LINK_WIDTH_SPEED_CONTROL);
 	val |= PORT_LOGIC_SPEED_CHANGE;
 	dw_pcie_writel_dbi(dw, PCIE_LINK_WIDTH_SPEED_CONTROL, val);
+
+	for (i = 0; i < RCAR_NUM_SPEED_CHANGE_RETRIES; i++) {
+		val = dw_pcie_readl_dbi(dw, PCIE_LINK_WIDTH_SPEED_CONTROL);
+		if (!(val & PORT_LOGIC_SPEED_CHANGE))
+			return true;
+		msleep(1);
+	}
+
+	return false;
 }
 
 static int rcar_gen4_pcie_start_link(struct dw_pcie *dw)
 {
 	struct rcar_gen4_pcie *rcar = to_rcar_gen4_pcie(dw);
-	int i;
+	int i, changes;
 
 	rcar_gen4_pcie_ltssm_enable(rcar, true);
 
 	/*
-	 * Require direct speed change with retrying here. Otherwise
-	 * RDLH_LINK_UP of PCIEINTSTS0 which is this controller specific
-	 * register may not be set.
+	 * Require direct speed change with retrying here. Since
+	 * dw_pcie_setup_rc() sets it once, PCIe Gen2 will be trained.
+	 * So, this needs remaining times for PCIe Gen4 if RC mode.
 	 */
-	if (rcar->mode == DW_PCIE_RC_TYPE) {
-		for (i = 0; i < SPEED_CHANGE_MAX_RETRIES; i++) {
-			rcar_gen4_pcie_speed_change(dw);
-			if (dw_pcie_link_up(dw))
-				return 0;
-			msleep(1);
-		}
+	changes = min_not_zero(dw->link_gen, RCAR_MAX_LINK_SPEED) - 1;
+	if (changes && rcar->mode == DW_PCIE_RC_TYPE)
+		changes--;
 
-		return -ETIMEDOUT;	/* Failed */
+	for (i = 0; i < changes; i++) {
+		if (!rcar_gen4_pcie_speed_change(dw))
+			break;	/* No error because possible disconnected here if EP mode */
 	}
 
 	return 0;

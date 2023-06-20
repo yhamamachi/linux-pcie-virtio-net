@@ -80,11 +80,15 @@ static int rcar_gen4_pcie_start_link(struct dw_pcie *dw)
 	rcar_gen4_pcie_ltssm_enable(rcar, true);
 
 	/*
-	 * Require direct speed change with retrying here. Since
-	 * dw_pcie_setup_rc() sets it once, PCIe Gen2 will be trained.
-	 * So, this needs remaining times for PCIe Gen4 if RC mode.
+	 * Require direct speed change with retrying here if the link_gen is
+	 * PCIe Gen2 or later.
 	 */
 	changes = min_not_zero(dw->link_gen, RCAR_MAX_LINK_SPEED) - 1;
+
+	/*
+	 * Since dw_pcie_setup_rc() sets it once, PCIe Gen2 will be trained.
+	 * So, this needs remaining times for PCIe Gen4 if RC mode.
+	 */
 	if (changes && rcar->mode == DW_PCIE_RC_TYPE)
 		changes--;
 

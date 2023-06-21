@@ -13,6 +13,9 @@
 #include "pcie-rcar-gen4.h"
 #include "pcie-designware.h"
 
+#define RCAR_GEN4_PCIE_EP_FUNC_DBI_OFFSET	0x1000
+#define RCAR_GEN4_PCIE_EP_FUNC_DBI2_OFFSET	0x800
+
 static void rcar_gen4_pcie_ep_pre_init(struct dw_pcie_ep *ep)
 {
 	struct dw_pcie *dw = to_dw_pcie_from_ep(ep);
@@ -38,6 +41,15 @@ static void rcar_gen4_pcie_ep_pre_init(struct dw_pcie_ep *ep)
 	dw_pcie_dbi_ro_wr_dis(dw);
 
 	writel(PCIEDMAINTSTSEN_INIT, rcar->base + PCIEDMAINTSTSEN);
+}
+
+static void rcar_gen4_pcie_ep_init(struct dw_pcie_ep *ep)
+{
+	struct dw_pcie *pci = to_dw_pcie_from_ep(ep);
+	enum pci_barno bar;
+
+	for (bar = 0; bar < PCI_STD_NUM_BARS; bar++)
+		dw_pcie_ep_reset_bar(pci, bar);
 }
 
 static void rcar_gen4_pcie_ep_deinit(struct dw_pcie_ep *ep)
@@ -81,11 +93,26 @@ rcar_gen4_pcie_ep_get_features(struct dw_pcie_ep *ep)
 	return &rcar_gen4_pcie_epc_features;
 }
 
+static unsigned int rcar_gen4_pcie_ep_func_conf_select(struct dw_pcie_ep *ep,
+						       u8 func_no)
+{
+	return func_no * RCAR_GEN4_PCIE_EP_FUNC_DBI_OFFSET;
+}
+
+static unsigned int rcar_gen4_pcie_ep_func_conf_select2(struct dw_pcie_ep *ep,
+						        u8 func_no)
+{
+	return func_no * RCAR_GEN4_PCIE_EP_FUNC_DBI2_OFFSET;
+}
+
 static const struct dw_pcie_ep_ops pcie_ep_ops = {
 	.ep_pre_init = rcar_gen4_pcie_ep_pre_init,
+	.ep_init = rcar_gen4_pcie_ep_init,
 	.ep_deinit = rcar_gen4_pcie_ep_deinit,
 	.raise_irq = rcar_gen4_pcie_ep_raise_irq,
 	.get_features = rcar_gen4_pcie_ep_get_features,
+	.func_conf_select = rcar_gen4_pcie_ep_func_conf_select,
+	.func_conf_select2 = rcar_gen4_pcie_ep_func_conf_select2,
 };
 
 static int rcar_gen4_add_pcie_ep(struct rcar_gen4_pcie *rcar,

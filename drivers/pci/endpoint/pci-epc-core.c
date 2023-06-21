@@ -149,20 +149,15 @@ const struct pci_epc_features *pci_epc_get_features(struct pci_epc *epc,
 {
 	const struct pci_epc_features *epc_features;
 
-printk("%s: func_no = %d, max_functions = %d\n", __func__, func_no,
-	epc->max_functions);
 	if (IS_ERR_OR_NULL(epc) || func_no >= epc->max_functions)
 		return NULL;
 
-printk("%s: vfunc_no = %d\n", __func__, vfunc_no);
 	if (vfunc_no > 0 && (!epc->max_vfs || vfunc_no > epc->max_vfs[func_no]))
 		return NULL;
 
-printk("%s:%d\n", __func__, __LINE__);
 	if (!epc->ops->get_features)
 		return NULL;
 
-printk("%s:%d\n", __func__, __LINE__);
 	mutex_lock(&epc->lock);
 	epc_features = epc->ops->get_features(epc, func_no, vfunc_no);
 	mutex_unlock(&epc->lock);

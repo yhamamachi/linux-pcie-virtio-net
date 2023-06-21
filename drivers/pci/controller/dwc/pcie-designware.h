@@ -344,9 +344,10 @@ struct dw_pcie_ep_ops {
 	 * access for different platform, if different func have different
 	 * offset, return the offset of func. if use write a register way
 	 * return a 0, and implement code in callback function of platform
-	 * driver.
+	 * driver. The func_conf_select2 is for dbi2.
 	 */
 	unsigned int (*func_conf_select)(struct dw_pcie_ep *ep, u8 func_no);
+	unsigned int (*func_conf_select2)(struct dw_pcie_ep *ep, u8 func_no);
 };
 
 struct dw_pcie_ep_func {

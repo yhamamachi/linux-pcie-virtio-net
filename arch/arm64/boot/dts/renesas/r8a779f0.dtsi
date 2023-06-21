@@ -813,6 +813,7 @@
 			reset-names = "pwr";
 			num-lanes = <2>;
 			max-link-speed = <4>;
+			max-functions = <2>;
 			status = "disabled";
 		};
 
@@ -834,6 +835,7 @@
 			reset-names = "pwr";
 			num-lanes = <2>;
 			max-link-speed = <4>;
+			max-functions = <2>;
 			status = "disabled";
 		};
 

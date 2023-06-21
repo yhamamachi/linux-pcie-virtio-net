@@ -13,8 +13,6 @@
 #include "pcie-rcar-gen4.h"
 #include "pcie-designware.h"
 
-#define RCAR_GEN4_PCIE_EP_FUNC_OFFSET	0x800
-
 static void rcar_gen4_pcie_ep_pre_init(struct dw_pcie_ep *ep)
 {
 	struct dw_pcie *dw = to_dw_pcie_from_ep(ep);
@@ -30,7 +28,6 @@ static void rcar_gen4_pcie_ep_pre_init(struct dw_pcie_ep *ep)
 
 	rcar_gen4_pcie_basic_init(rcar);
 
-#if 1
 	dw_pcie_dbi_ro_wr_en(dw);
 
 	/* Multi function */
@@ -39,18 +36,8 @@ static void rcar_gen4_pcie_ep_pre_init(struct dw_pcie_ep *ep)
 	dw_pcie_writeb_dbi(dw, PCI_HEADER_TYPE, val);
 
 	dw_pcie_dbi_ro_wr_dis(dw);
-#endif
 
 	writel(PCIEDMAINTSTSEN_INIT, rcar->base + PCIEDMAINTSTSEN);
-}
-
-static void rcar_gen4_pcie_ep_init(struct dw_pcie_ep *ep)
-{
-	struct dw_pcie *pci = to_dw_pcie_from_ep(ep);
-	enum pci_barno bar;
-
-	for (bar = 0; bar < PCI_STD_NUM_BARS; bar++)
-		dw_pcie_ep_reset_bar(pci, bar);
 }
 
 static void rcar_gen4_pcie_ep_deinit(struct dw_pcie_ep *ep)
@@ -84,7 +71,7 @@ static const struct pci_epc_features rcar_gen4_pcie_epc_features = {
 	.linkup_notifier = false,
 	.msi_capable = true,
 	.msix_capable = false,
-	.reserved_bar = 1 << BAR_1 | 1 << BAR_3 | 1 << BAR_5,
+	.reserved_bar = 1 << BAR_5,
 	.align = SZ_1M,
 };
 
@@ -94,19 +81,11 @@ rcar_gen4_pcie_ep_get_features(struct dw_pcie_ep *ep)
 	return &rcar_gen4_pcie_epc_features;
 }
 
-static unsigned int rcar_gen4_pcie_ep_func_conf_select(struct dw_pcie_ep *ep,
-						       u8 func_no)
-{
-	return func_no * RCAR_GEN4_PCIE_EP_FUNC_OFFSET;
-}
-
 static const struct dw_pcie_ep_ops pcie_ep_ops = {
 	.ep_pre_init = rcar_gen4_pcie_ep_pre_init,
-	.ep_init = rcar_gen4_pcie_ep_init,
 	.ep_deinit = rcar_gen4_pcie_ep_deinit,
 	.raise_irq = rcar_gen4_pcie_ep_raise_irq,
 	.get_features = rcar_gen4_pcie_ep_get_features,
-	.func_conf_select = rcar_gen4_pcie_ep_func_conf_select,
 };
 
 static int rcar_gen4_add_pcie_ep(struct rcar_gen4_pcie *rcar,

@@ -61,8 +61,6 @@ static void __dw_pcie_ep_reset_bar(struct dw_pcie *pci, u8 func_no,
 	unsigned int func_offset = 0;
 	struct dw_pcie_ep *ep = &pci->ep;
 
-printk("%s: func_no = %d, bar = %d\n", __func__, func_no, bar);
-
 	func_offset = dw_pcie_ep_func_select(ep, func_no);
 
 	reg = func_offset + PCI_BASE_ADDRESS_0 + (4 * bar);
@@ -247,9 +245,6 @@ static int dw_pcie_ep_set_bar(struct pci_epc *epc, u8 func_no, u8 vfunc_no,
 	else
 		type = PCIE_ATU_TYPE_IO;
 
-printk("%s: func_no = %d, phys_addr = %llx, bar = %d, size = %lx\n",
-	__func__, func_no, epf_bar->phys_addr, bar, size);
-
 	ret = dw_pcie_ep_inbound_atu(ep, func_no, type, epf_bar->phys_addr, bar);
 	if (ret)
 		return ret;
@@ -318,8 +313,6 @@ static int dw_pcie_ep_map_addr(struct pci_epc *epc, u8 func_no, u8 vfunc_no,
 	atu.cpu_addr = addr;
 	atu.pci_addr = pci_addr;
 	atu.size = size;
-printk("%s: func_no = %d, cpu_addr = %llx, pci_addr = %llx, size = %lx\n",
-	__func__, func_no, addr, pci_addr, size);
 	ret = dw_pcie_ep_outbound_atu(ep, &atu);
 	if (ret) {
 		dev_err(pci->dev, "Failed to enable address\n");
@@ -827,7 +820,6 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 	if (ret < 0)
 		epc->max_functions = 1;
 
-	printk("%s: max_functions = %d\n", __func__, epc->max_functions);
 	for (func_no = 0; func_no < epc->max_functions; func_no++) {
 		ep_func = devm_kzalloc(dev, sizeof(*ep_func), GFP_KERNEL);
 		if (!ep_func)

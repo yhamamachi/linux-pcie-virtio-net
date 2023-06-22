@@ -531,15 +531,15 @@ int dw_pcie_ep_raise_intx_irq(struct dw_pcie_ep *ep, u8 func_no)
 	 * rising-edge triggering IRQ. Hopefully the interrupt controller will
 	 * still be able to register the incoming IRQ event...
 	 */
-	ret = dw_pcie_ep_send_msg(ep, func_no, PCI_CODE_ASSERT_INTA,
-				  PCI_MSG_ROUTING_LOCAL);
+	ret = dw_pcie_ep_send_msg(ep, func_no, PCI_MSG_CODE_ASSERT_INTA,
+				  PCI_MSG_TYPE_R_ROUTING_LOCAL);
 	if (ret)
 		return ret;
 
 	usleep_range(50, 100);
 
-	return dw_pcie_ep_send_msg(ep, func_no, PCI_CODE_DEASSERT_INTA,
-				   PCI_MSG_ROUTING_LOCAL);
+	return dw_pcie_ep_send_msg(ep, func_no, PCI_MSG_CODE_DEASSERT_INTA,
+				   PCI_MSG_TYPE_R_ROUTING_LOCAL);
 }
 EXPORT_SYMBOL_GPL(dw_pcie_ep_raise_intx_irq);
 

@@ -21,7 +21,7 @@ static void rcar_gen4_pcie_ep_pre_init(struct dw_pcie_ep *ep)
 	struct dw_pcie *dw = to_dw_pcie_from_ep(ep);
 	struct rcar_gen4_pcie *rcar = to_rcar_gen4_pcie(dw);
 	int ret;
-	u8 val;
+//	u8 val;
 
 	ret = clk_bulk_prepare_enable(DW_PCIE_NUM_CORE_CLKS, dw->core_clks);
 	if (ret) {
@@ -31,6 +31,7 @@ static void rcar_gen4_pcie_ep_pre_init(struct dw_pcie_ep *ep)
 
 	rcar_gen4_pcie_basic_init(rcar);
 
+#if 0
 	dw_pcie_dbi_ro_wr_en(dw);
 
 	/* Multi function */
@@ -39,6 +40,7 @@ static void rcar_gen4_pcie_ep_pre_init(struct dw_pcie_ep *ep)
 	dw_pcie_writeb_dbi(dw, PCI_HEADER_TYPE, val);
 
 	dw_pcie_dbi_ro_wr_dis(dw);
+#endif
 
 	writel(PCIEDMAINTSTSEN_INIT, rcar->base + PCIEDMAINTSTSEN);
 }

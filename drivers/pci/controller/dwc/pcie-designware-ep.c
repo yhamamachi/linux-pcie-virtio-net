@@ -6,11 +6,13 @@
  * Author: Kishon Vijay Abraham I <kishon@ti.com>
  */
 
+#include <linux/delay.h>
 #include <linux/align.h>
 #include <linux/bitfield.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
 
+#include "../../pci.h"
 #include "pcie-designware.h"
 #include <linux/pci-epc.h>
 #include <linux/pci-epf.h>
@@ -456,6 +458,32 @@ static const struct pci_epc_ops epc_ops = {
 	.get_features		= dw_pcie_ep_get_features,
 };
 
+static int dw_pcie_ep_send_msg(struct dw_pcie_ep *ep, u8 func_no, u8 code,
+                               u8 routing)
+{
+        struct dw_pcie_ob_atu_cfg atu = { 0 };
+        struct pci_epc *epc = ep->epc;
+        int ret;
+
+        atu.func_no = func_no;
+        atu.code = code;
+        atu.routing = routing;
+        atu.type = PCIE_ATU_TYPE_MSG;
+        atu.cpu_addr = ep->intx_mem_phys;
+        atu.size = epc->mem->window.page_size;
+
+        ret = dw_pcie_ep_outbound_atu(ep, &atu);
+        if (ret)
+                return ret;
+
+        /* A dummy-write ep->intx_mem is converted to a Msg TLP */
+        writel(0, ep->intx_mem);
+
+        dw_pcie_ep_unmap_addr(epc, func_no, 0, ep->intx_mem_phys);
+
+        return 0;
+}
+
 /**
  * dw_pcie_ep_raise_intx_irq - Raise INTx IRQ to the host
  * @ep: DWC EP device
@@ -467,10 +495,22 @@ int dw_pcie_ep_raise_intx_irq(struct dw_pcie_ep *ep, u8 func_no)
 {
 	struct dw_pcie *pci = to_dw_pcie_from_ep(ep);
 	struct device *dev = pci->dev;
+       	int ret;
 
-	dev_err(dev, "EP cannot raise INTX IRQs\n");
+       	if (!ep->intx_mem) {
+               	dev_err(dev, "EP cannot raise INTX IRQs\n");
+               	return -EOPNOTSUPP;
+       	}
 
-	return -EINVAL;
+       	ret = dw_pcie_ep_send_msg(ep, func_no, PCI_MSG_CODE_ASSERT_INTA,
+                                  PCI_MSG_TYPE_R_LOCAL);
+        if (ret)
+                return ret;
+
+        usleep_range(50, 100);
+
+        return dw_pcie_ep_send_msg(ep, func_no, PCI_MSG_CODE_DEASSERT_INTA,
+                                   PCI_MSG_TYPE_R_LOCAL);
 }
 EXPORT_SYMBOL_GPL(dw_pcie_ep_raise_intx_irq);
 
@@ -645,6 +685,10 @@ void dw_pcie_ep_deinit(struct dw_pcie_ep *ep)
 
 	pci_epc_mem_free_addr(epc, ep->msi_mem_phys, ep->msi_mem,
 			      epc->mem->window.page_size);
+
+	if (ep->intx_mem)
+               	pci_epc_mem_free_addr(epc, ep->intx_mem_phys, ep->intx_mem,
+                       	       	      epc->mem->window.page_size);
 
 	pci_epc_mem_exit(epc);
 }
@@ -905,6 +949,11 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 		dev_err(dev, "Failed to reserve memory for MSI/MSI-X\n");
 		goto err_exit_epc_mem;
 	}
+
+	ep->intx_mem = pci_epc_mem_alloc_addr(epc, &ep->intx_mem_phys,
+                                       epc->mem->window.page_size);
+       	if (!ep->intx_mem)
+               	dev_warn(dev, "Failed to reserve memory for INTx\n");
 
 	return 0;
 

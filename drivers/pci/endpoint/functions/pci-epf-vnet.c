@@ -137,6 +137,8 @@ enum {
 	VNET_VIRTQUEUE_NUM,
 };
 
+#define vqpn2sqpn(vqn) ((vqn - VNET_VIRTQUEUE_RDMA_SQ0) / 2)
+
 static inline struct epf_vnet *vdev_to_vnet(struct virtio_device *vdev)
 {
 	return container_of(vdev, struct epf_vnet, vdev);
@@ -1906,6 +1908,25 @@ err_out:
 	return err;
 }
 
+static int epf_vnet_roce_get_dest_qpn(struct epf_vnet_rdma_qp *qp, struct virtio_rdma_sq_req *req)
+{
+	switch (qp->type) {
+		case VIRTIO_IB_QPT_GSI:
+		case VIRTIO_IB_QPT_UD:
+			return req->ud.remote_qpn;
+		case VIRTIO_IB_QPT_RC:
+			return qp->dest_qpn;
+		case VIRTIO_IB_QPT_SMI:
+		case VIRTIO_IB_QPT_UC:
+			pr_info("The qp type (%d) is not yet supported\n",
+					 qp->type);
+			return -EINVAL;
+		default:
+			pr_info("invalid qp type found\n");
+			return -EINVAL;
+	}
+}
+
 static int epf_vnet_roce_handle_ep_send_wr(struct epf_vnet *vnet, u32 vqn,
 				struct virtio_rdma_sq_req *sreq)
 {
@@ -1931,7 +1952,7 @@ static int epf_vnet_roce_handle_ep_send_wr(struct epf_vnet *vnet, u32 vqn,
 		return -ENOTSUPP;
 	}
 
-	sqpn = (vqn - VNET_VIRTQUEUE_RDMA_SQ0) / 2;
+	sqpn = vqpn2sqpn(vqn);
 
 	sqp = epf_vnet_lookup_qp(&vnet->ep_roce, sqpn);
 	if (!sqp) {
@@ -1939,22 +1960,9 @@ static int epf_vnet_roce_handle_ep_send_wr(struct epf_vnet *vnet, u32 vqn,
 		return -EINVAL;
 	}
 
-	switch(sqp->type) {
-		case VIRTIO_IB_QPT_GSI:
-		case VIRTIO_IB_QPT_UD:
-			dqpn = ioread32(&sreq->ud.remote_qpn);
-			break;
-		case VIRTIO_IB_QPT_RC:
-			dqpn = sqp->dest_qpn;
-			break;
-		case VIRTIO_IB_QPT_SMI:
-		case VIRTIO_IB_QPT_UC:
-			pr_err("The qp type (%d) is not yet supported\n",
-					 sqp->type);
-			return -EINVAL;
-		default:
-			pr_err("invalid qp type found\n");
-			return -EINVAL;
+	dqpn = epf_vnet_roce_get_dest_qpn(sqp, sreq);
+	if (dqpn < 0) {
+		pr_err("Failed to lookup qp: %d\n", dqpn);
 	}
 
 	dqp = epf_vnet_lookup_qp(&vnet->vdev_roce, dqpn);
@@ -2127,25 +2135,57 @@ err_rreq_memunmap:
 	return err;
 }
 
+static void epf_vnet_ep_roce_unload_sreq(struct virtio_rdma_sq_req *sreq)
+{
+	kfree(sreq);
+}
+
+static int epf_vnet_ep_roce_load_sreq(struct epf_vnet *vnet, struct vringh_kiov *iov, struct virtio_rdma_sq_req **sreq)
+{
+	phys_addr_t sreq_pci;
+	size_t sreq_len;
+	void __iomem *mapped_sreq;
+	phys_addr_t sreq_phys;
+	struct epf_virtio *evio = &vnet->evio;
+	struct pci_epf *epf = evio->epf;
+
+	sreq_pci = (phys_addr_t)iov->iov[iov->i].iov_base;
+	sreq_len = iov->iov[iov->i].iov_len;
+
+	mapped_sreq = pci_epc_map_aligned(epf->epc, epf->func_no, epf->vfunc_no,
+																	 sreq_pci, &sreq_phys, sreq_len);
+	if (IS_ERR(mapped_sreq)) {
+		pr_err("Failed to map sreq\n");
+		return PTR_ERR(mapped_sreq);
+	}
+
+	*sreq = kmalloc(sreq_len, GFP_KERNEL);
+	if (!*sreq)  {
+		pr_err("Failed to allocate memory\n");
+		return -ENOMEM;
+	}
+
+	memcpy(*sreq, mapped_sreq, sreq_len);
+
+	pci_epc_unmap_aligned(epf->epc, epf->func_no, epf->vfunc_no,
+				   						 sreq_phys, mapped_sreq, sreq_len);
+
+	return 0;
+}
+
 static void epf_vnet_ep_roce_tx_handler(struct work_struct *work)
 {
 	struct epf_vnet *vnet =
 		container_of(work, struct epf_vnet, ep_roce_tx_work);
 	struct vringh_kiov *iov;
 	struct epf_virtio *evio = &vnet->evio;
-	struct pci_epf *epf = evio->epf;
-	struct virtio_rdma_sq_req __iomem *sreq;
-	struct virtio_rdma_sq_req *sreq_tmp = NULL;
-	size_t sreq_tmp_size = 0;
+	struct virtio_rdma_sq_req *sreq = NULL;
 	int err;
 
 	for (int i = 0; i < 3; i++) {
 		u32 vqn = VNET_VIRTQUEUE_RDMA_SQ0 + i * 2;
 		u16 head;
-		u64 sreq_pci;
-		phys_addr_t sreq_phys;
-		size_t sreq_len;
-
+		
 		iov = &vnet->vdev_iovs[vqn];
 
 		err = epf_virtio_getdesc(evio, vqn, iov, NULL, &head);
@@ -2157,46 +2197,27 @@ static void epf_vnet_ep_roce_tx_handler(struct work_struct *work)
 			break;
 		}
 
-		sreq_pci = (u64)iov->iov[iov->i].iov_base;
-		sreq_len = iov->iov[iov->i].iov_len;
-
-		sreq = pci_epc_map_aligned(epf->epc, epf->func_no, epf->vfunc_no,
-					sreq_pci, &sreq_phys, sreq_len);
-		if (IS_ERR(sreq)) {
-			pr_err("Failed to map sreq\n");
-			err = PTR_ERR(sreq);
+		err = epf_vnet_ep_roce_load_sreq(vnet, iov, &sreq);
+		if (err) {
+			pr_err("ailed to load sreq\n");
 			break;
 		}
 
-		if (sreq_tmp_size < sreq_len) {
-			kfree(sreq_tmp);
-			sreq_tmp = kmalloc(sreq_len, GFP_KERNEL);
-			if (!sreq_tmp) {
-				pr_err("failed to allocate memory\n");
-				break;
-			}
-		}
-
-		memcpy(sreq_tmp, sreq, sreq_len);
-
-		pci_epc_unmap_aligned(epf->epc, epf->func_no, epf->vfunc_no,
-				   sreq_phys, sreq, sreq_len);
-
-		switch (sreq_tmp->opcode) {
+		switch (sreq->opcode) {
 		case VIRTIO_IB_WR_RDMA_WRITE:
-			err = epf_vnet_roce_handle_ep_rdma_write(vnet, vqn, sreq_tmp);
+			err = epf_vnet_roce_handle_ep_rdma_write(vnet, vqn, sreq);
 			if (err)
 				pr_err("Failed to process rdma write %d\n", err);
 			break;
 		case VIRTIO_IB_WR_SEND:
 			err = epf_vnet_roce_handle_ep_send_wr(
-				vnet, vqn, sreq_tmp);
+				vnet, vqn, sreq);
 			if (err)
 				pr_err("[%d] failed to process send work request: %d\n",
 				       i, err);
 			break;
 		case VIRTIO_IB_WR_RDMA_READ:
-			err = epf_vnet_roce_handle_ep_rdma_read(vnet, vqn, sreq_tmp);
+			err = epf_vnet_roce_handle_ep_rdma_read(vnet, vqn, sreq);
 			if (err)
 					pr_err("Failed to process rdma read: %d\n", err);
 			break;
@@ -2206,16 +2227,16 @@ static void epf_vnet_ep_roce_tx_handler(struct work_struct *work)
 			// 		break;
 		default:
 			pr_err("ep: Found unsupported work request type %d\n",
-			       sreq_tmp->opcode);
+			       sreq->opcode);
 		}
 
 		epf_virtio_iov_complete(evio, vqn, head,
 					sizeof(*sreq) +
 						sizeof(struct virtio_rdma_sge) *
-							sreq_tmp->num_sge);
+							sreq->num_sge);
 	}
 
-	kfree(sreq_tmp);
+	epf_vnet_ep_roce_unload_sreq(sreq);
 }
 
 static void epf_vnet_vdev_cfg_set_status(struct epf_vnet *vnet, u16 status)
@@ -2909,24 +2930,7 @@ static void epf_vnet_roce_rx_handler(struct work_struct *work)
 	pr_info("Should operate a receive work request\n");
 }
 
-static int epf_vnet_roce_get_dest_qpn(struct epf_vnet_rdma_qp *qp, struct virtio_rdma_sq_req *req)
-{
-	switch (qp->type) {
-		case VIRTIO_IB_QPT_GSI:
-		case VIRTIO_IB_QPT_UD:
-			return req->ud.remote_qpn;
-		case VIRTIO_IB_QPT_RC:
-			return qp->dest_qpn;
-		case VIRTIO_IB_QPT_SMI:
-		case VIRTIO_IB_QPT_UC:
-			pr_info("The qp type (%d) is not yet supported\n",
-					 qp->type);
-			return -EINVAL;
-		default:
-			pr_info("invalid qp type found\n");
-			return -EINVAL;
-	}
-}
+
 
 static struct virtio_rdma_rq_req *epf_vnet_roce_load_rreq(struct epf_vnet *vnet, 
 																													 struct vringh_kiov *iov)

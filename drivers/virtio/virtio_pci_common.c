@@ -100,11 +100,11 @@ static irqreturn_t vp_interrupt(int irq, void *opaque)
 }
 
 static int vp_request_msix_vectors(struct virtio_device *vdev, int nvectors,
-				   bool per_vq_vectors, struct irq_affinity *desc)
+				   bool per_vq_vectors, struct irq_affinity *desc,
+				   unsigned int flags)
 {
 	struct virtio_pci_device *vp_dev = to_vp_device(vdev);
 	const char *name = dev_name(&vp_dev->vdev.dev);
-	unsigned int flags = PCI_IRQ_MSIX;
 	unsigned int i, v;
 	int err = -ENOMEM;
 
@@ -285,7 +285,7 @@ static int vp_find_vqs_msix(struct virtio_device *vdev, unsigned int nvqs,
 		struct virtqueue *vqs[], vq_callback_t *callbacks[],
 		const char * const names[], bool per_vq_vectors,
 		const bool *ctx,
-		struct irq_affinity *desc)
+		struct irq_affinity *desc, unsigned int flags)
 {
 	struct virtio_pci_device *vp_dev = to_vp_device(vdev);
 	u16 msix_vec;
@@ -307,7 +307,7 @@ static int vp_find_vqs_msix(struct virtio_device *vdev, unsigned int nvqs,
 	}
 
 	err = vp_request_msix_vectors(vdev, nvectors, per_vq_vectors,
-				      per_vq_vectors ? desc : NULL);
+				      per_vq_vectors ? desc : NULL, flags);
 	if (err)
 		goto error_find;
 
@@ -402,11 +402,23 @@ int vp_find_vqs(struct virtio_device *vdev, unsigned int nvqs,
 	int err;
 
 	/* Try MSI-X with one vector per queue. */
-	err = vp_find_vqs_msix(vdev, nvqs, vqs, callbacks, names, true, ctx, desc);
+	err = vp_find_vqs_msix(vdev, nvqs, vqs, callbacks, names, true, ctx,
+			       desc, PCI_IRQ_MSIX);
 	if (!err)
 		return 0;
 	/* Fallback: MSI-X with one vector for config, one shared for queues. */
-	err = vp_find_vqs_msix(vdev, nvqs, vqs, callbacks, names, false, ctx, desc);
+	err = vp_find_vqs_msix(vdev, nvqs, vqs, callbacks, names, false, ctx,
+			       desc, PCI_IRQ_MSIX);
+	if (!err)
+		return 0;
+	/* Try MSI with one vector per queue. */
+	err = vp_find_vqs_msix(vdev, nvqs, vqs, callbacks, names, true, ctx,
+			       desc, PCI_IRQ_MSI);
+	if (!err)
+		return 0;
+	/* Fallback: MSI with one vector for config, one shared for queues. */
+	err = vp_find_vqs_msix(vdev, nvqs, vqs, callbacks, names, false, ctx,
+			       desc, PCI_IRQ_MSI);
 	if (!err)
 		return 0;
 	/* Is there an interrupt? If not give up. */

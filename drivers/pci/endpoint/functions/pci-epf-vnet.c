@@ -1807,7 +1807,7 @@ static int epf_vnet_roce_handle_ep_rdma_read(struct epf_vnet *vnet, u32 vqn,
 	struct epf_vnet_rdma_mr *src_mr;
 	struct pci_epf *epf = vnet->evio.epf;
 	struct virtio_rdma_cq_req cqe;
-	struct epf_vnet_rdma_cq *cq;
+	//struct epf_vnet_rdma_cq *cq;
 	struct epf_vnet_rdma_qp *qp;
 	void *src;
 	size_t total_len = 0;
@@ -2320,8 +2320,8 @@ static int epf_vnet_vdev_handle_roce_destroy_cq(struct epf_vnet *vnet,
 						struct vringh_kiov *wiov)
 {
 	struct virtio_rdma_cmd_destroy_cq *cmd;
-	struct epf_vnet_rdma_cq *cq;
-	struct vringh *vrh;
+	//struct epf_vnet_rdma_cq *cq;
+	//struct vringh *vrh;
 
 	cmd = phys_to_virt((unsigned long)riov->iov[riov->i].iov_base);
 
@@ -3044,7 +3044,7 @@ static int epf_vnet_roce_vdev_handle_send_wr(struct epf_vnet *vnet,
 					     struct virtqueue *vq)
 {
 	struct epf_virtio *evio = &vnet->evio;
-	struct pci_epf *epf = evio->epf;
+	// struct pci_epf *epf = evio->epf;
 	struct vringh_kiov *iov;
 	struct epf_vnet_rdma_qp *dst_qp, *src_qp;
 	int ret;

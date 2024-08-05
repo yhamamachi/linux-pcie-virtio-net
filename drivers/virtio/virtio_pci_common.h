@@ -61,7 +61,7 @@ struct virtio_pci_device {
 	/* array of all queues for house-keeping */
 	struct virtio_pci_vq_info **vqs;
 
-	/* MSI/MSI-X support */
+	/* MSI-X support */
 	int msix_enabled;
 	int intx_enabled;
 	cpumask_var_t *msix_affinity_masks;

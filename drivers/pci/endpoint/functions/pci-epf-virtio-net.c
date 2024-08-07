@@ -73,20 +73,20 @@ static int epf_virtnet_setup_bar(struct pci_epf *epf,
 	void *cfg_base;
 	int ret;
 
-	if (!!(epc_features->reserved_bar & (1 << cfg_bar)))
+	if (epc_features->bar[cfg_bar].type == BAR_RESERVED)
 		return -EOPNOTSUPP;
 
-	if (epc_features->bar_fixed_size[cfg_bar]) {
-		if (cfg_bar_size > epc_features->bar_fixed_size[cfg_bar])
+	if (epc_features->bar[cfg_bar].type == BAR_FIXED) {
+		if (cfg_bar_size > epc_features->bar[cfg_bar].fixed_size)
 			return -ENOMEM;
 
-		cfg_bar_size = epc_features->bar_fixed_size[cfg_bar];
+		cfg_bar_size = epc_features->bar[cfg_bar].fixed_size;
 	}
 
 	virt_cfg_bar->flags |= PCI_BASE_ADDRESS_MEM_TYPE_64;
 
 	cfg_base = pci_epf_alloc_space(epf, cfg_bar_size, cfg_bar,
-				       epc_features->align, PRIMARY_INTERFACE);
+				       epc_features, PRIMARY_INTERFACE);
 	if (!cfg_base) {
 		pr_err("Failed to allocate PCI BAR memory\n");
 		return -ENOMEM;
@@ -460,10 +460,10 @@ static void epf_virtnet_tx_cb(void *p)
 		queue_work(vnet->irq_wq, &vnet->raise_irq_work);
 
 	dma_unmap_single(dma_dev, param->dma_data, param->dma_data_size,
-			 DMA_MEM_TO_DEV);
+			 DMA_TO_DEVICE);
 	dma_unmap_single(dma_dev, param->dma_hdr,
 			 sizeof(struct virtio_net_hdr_mrg_rxbuf),
-			 DMA_MEM_TO_DEV);
+			 DMA_TO_DEVICE);
 
 	kfree(param->used_elems);
 	kfree(param);
@@ -496,7 +496,7 @@ static int epf_virtnet_send_packet(struct epf_virtnet *vnet,
 		return -ENOMEM;
 
 	dma_data = dma_local =
-		dma_map_single(dma_dev, skb->data, skb->len, DMA_MEM_TO_DEV);
+		dma_map_single(dma_dev, skb->data, skb->len, DMA_TO_DEVICE);
 	if (dma_mapping_error(dma_dev, dma_local))
 		return -ENOMEM;
 
@@ -516,7 +516,7 @@ static int epf_virtnet_send_packet(struct epf_virtnet *vnet,
 			pr_err("failed the vringh_getesc_iomem\n");
 			return err;
 		} else if (!err) {
-			dma_unmap_page(dma_dev, dma_data, skb->len, DMA_MEM_TO_DEV);
+			dma_unmap_page(dma_dev, dma_data, skb->len, DMA_TO_DEVICE);
 			kfree(hdr);
 			kfree(tx_used_elems);
 			vringh_abandon_iomem(&vnet->tx_vrh, hdr->num_buffers);
@@ -550,7 +550,7 @@ static int epf_virtnet_send_packet(struct epf_virtnet *vnet,
 		hdr->num_buffers++;
 	}
 
-	dma_hdr_addr = dma_map_single(dma_dev, hdr, sizeof *hdr, DMA_MEM_TO_DEV);
+	dma_hdr_addr = dma_map_single(dma_dev, hdr, sizeof *hdr, DMA_TO_DEVICE);
 	if (dma_mapping_error(dma_dev, dma_hdr_addr))
 		return -ENOMEM;
 
@@ -643,7 +643,7 @@ static void dma_async_rx_callback(void *p)
 		struct _bufs *buf = &param->bufs[i];
 
 		dma_unmap_page(dma_dev, buf->dma_addr, PAGE_SIZE,
-			       DMA_DEV_TO_MEM);
+			       DMA_FROM_DEVICE);
 
 		if (!skb) {
 			skb = napi_build_skb(page_address(buf->page), PAGE_SIZE * 2);
@@ -724,7 +724,7 @@ static int epf_virtnet_rx_packets(struct epf_virtnet *vnet)
 		if (!page)
 			return -ENOMEM;
 
-		dma_addr = dma_map_page(dma_dev, page, 0, PAGE_SIZE, DMA_DEV_TO_MEM);
+		dma_addr = dma_map_page(dma_dev, page, 0, PAGE_SIZE, DMA_FROM_DEVICE);
 
 		param->bufs[i].page = page;
 		param->bufs[i].len = len;
@@ -801,7 +801,7 @@ static void epf_virtnet_raise_irq_handler(struct work_struct *work)
 	struct pci_epf *epf = vnet->epf;
 	struct pci_epc *epc = epf->epc;
 
-	pci_epc_raise_irq(epc, epf->func_no, epf->vfunc_no, PCI_EPC_IRQ_LEGACY, 0);
+	pci_epc_raise_irq(epc, epf->func_no, epf->vfunc_no, PCI_IRQ_INTX, 0);
 }
 
 static int epf_virtnet_get_link_ksettings(struct net_device *ndev,
@@ -865,7 +865,7 @@ static int epf_virtnet_create_netdev(struct pci_epf *epf)
 		return err;
 	}
 
-	netif_napi_add(ndev, &ndev_adapter->napi, local_ndev_rx_poll, NAPI_POLL_WEIGHT);
+	netif_napi_add(ndev, &ndev_adapter->napi, local_ndev_rx_poll);
 
 	netif_carrier_off(ndev);
 
@@ -914,11 +914,11 @@ static int epf_virtnet_init_edma(struct epf_virtnet *vnet)
 	dma_cap_set(DMA_SLAVE, mask);
 
 	param.dev = vnet->epf->epc->dev.parent;
-	param.dma_mask = BIT(DMA_MEM_TO_DEV);
+	param.dma_mask = BIT(DMA_TO_DEVICE);
 
 	vnet->tx_dma_chan = dma_request_channel(mask, epf_virtnet_dma_filter, &param);
 
-	param.dma_mask = BIT(DMA_DEV_TO_MEM);
+	param.dma_mask = BIT(DMA_FROM_DEVICE);
 
 	vnet->rx_dma_chan = dma_request_channel(mask, epf_virtnet_dma_filter, &param);
 
@@ -1006,7 +1006,7 @@ static struct pci_epf_header epf_virtnet_header = {
 	.interrupt_pin = PCI_INTERRUPT_INTA,
 };
 
-static int epf_virtnet_probe(struct pci_epf *epf)
+static int epf_virtnet_probe(struct pci_epf *epf, const struct pci_epf_device_id *device_id)
 {
 	struct epf_virtnet *vnet;
 	struct device *dev;

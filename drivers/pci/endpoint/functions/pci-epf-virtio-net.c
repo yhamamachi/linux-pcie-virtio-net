@@ -698,7 +698,7 @@ static int epf_virtnet_rx_packets(struct epf_virtnet *vnet)
 
 	riov->i++;
 
-	param = kmalloc(sizeof(struct epf_virtnet_rx_cb_param *), GFP_KERNEL);
+	param = kmalloc(sizeof(struct epf_virtnet_rx_cb_param), GFP_KERNEL);
 	if (!param) {
 		pr_err("failed to allocate memory (param)\n");
 		return -ENOMEM;

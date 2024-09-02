@@ -3590,7 +3590,7 @@ static int epf_vnet_setup_common(struct epf_vnet *vnet, struct device *dev)
 	int err;
 
 	vnet->features =
-		BIT(VIRTIO_F_ACCESS_PLATFORM) | //BIT(VIRTIO_NET_F_MTU) |
+		BIT(VIRTIO_F_ACCESS_PLATFORM) | BIT(VIRTIO_NET_F_MTU) |
 		BIT(VIRTIO_NET_F_STATUS) |
 		/* Following features are to skip any of checking and offloading, Like a
 		 * transmission between virtual machines on same system. Details are on
@@ -3607,7 +3607,7 @@ static int epf_vnet_setup_common(struct epf_vnet *vnet, struct device *dev)
 	/* GSI is used 1 qps and cq */
 	vnet->vnet_cfg.max_rdma_qps = EPF_VNET_RDMA_MAX_QP;
 	vnet->vnet_cfg.max_rdma_cqs = EPF_VNET_RDMA_MAX_CQ;
-	// 	vnet->vnet_cfg.mtu = PAGE_SIZE;
+	vnet->vnet_cfg.mtu = 4000;//PAGE_SIZE - ETH_HLEN;
 
 	memcpy(&vnet->vdev_vnet_cfg, &vnet->vnet_cfg, sizeof(vnet->vnet_cfg));
 

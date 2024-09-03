@@ -4,6 +4,7 @@
 
 - base envrionment
   - https://github.com/yhamamachi/linux-pcie-virtio-net/tree/release20230922-v6.4.rc7-next
+    - Based on https://github.com/ShunsukeMie/linux/tree/release20230922
 - renesas-devel base
   - https://github.com/yhamamachi/linux-pcie-virtio-net/tree/renesas-devel-2023-06-26-v6.4-wip
   - https://github.com/yhamamachi/linux-pcie-virtio-net/tree/renesas-devel-2024-07-15-v6.10-wip

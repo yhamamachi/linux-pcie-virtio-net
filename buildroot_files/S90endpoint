@@ -5,6 +5,8 @@
 
 case "$1" in
   start)
+    sysctl net.core.rmem_max=1048576
+    sysctl net.core.wmem_max=1048576
     echo "Starting Endpoint function..."
     mount -t configfs none /sys/kernel/config
     export IBV_CONFIG_DIR=/etc/libibverbs.d/
@@ -19,13 +21,17 @@ case "$1" in
         # echo 32 > functions/$FUNCTION_NAME/func1/msi_interrupts
         ln -s functions/$FUNCTION_NAME/func1 controllers/e65d0000.pcie-ep/ && sleep 1
         echo 1 > controllers/e65d0000.pcie-ep/start && sleep 1
-        ifconfig eth0 mtu 4082
+        # ifconfig eth0 mtu 4082
         ifconfig eth0 192.168.10.22 up
-        mkdir /sys/kernel/config/rdma_cm/virtio_rdma_0
+        # mkdir /sys/kernel/config/rdma_cm/virtio_rdma_0
+        echo "iperf3 is running in servermode (cmd: iperf3 -s)"
+        iperf3 -s > /dev/null &
     else
         echo "This device is root complex"
         # ifconfig eth1 mtu 4082
-        # ifconfig eth1 192.168.10.1 up
+        ifconfig eth1 192.168.10.1 up
+        sleep 1s
+        ping 192.168.10.22 -c 5 -s 64
     fi
     ;;
   stop)

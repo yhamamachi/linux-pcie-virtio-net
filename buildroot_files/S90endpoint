@@ -7,6 +7,10 @@ case "$1" in
   start)
     sysctl net.core.rmem_max=1048576
     sysctl net.core.wmem_max=1048576
+
+    echo performance > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
+    echo performance > /sys/devices/system/cpu/cpufreq/policy4/scaling_governor    
+
     echo "Starting Endpoint function..."
     mount -t configfs none /sys/kernel/config
     export IBV_CONFIG_DIR=/etc/libibverbs.d/

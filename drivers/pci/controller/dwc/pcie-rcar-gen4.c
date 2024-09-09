@@ -33,6 +33,7 @@
 
 /* PCIe Interrupt Status 0 */
 #define PCIEINTSTS0		0x0084
+#define PCIEINTXSTS		0x0090
 
 /* PCIe Interrupt Status 0 Enable */
 #define PCIEINTSTS0EN		0x0310
@@ -43,6 +44,8 @@
 /* PCIe DMA Interrupt Status Enable */
 #define PCIEDMAINTSTSEN		0x0314
 #define PCIEDMAINTSTSEN_INIT	GENMASK(15, 0)
+#define PCIEINTXSTSEN		0x0318
+#define PCIEINTXSTSCLR		0x0348
 
 /* Port Logic Registers 89 */
 #define PRTLGC89		0x0b70
@@ -311,6 +314,8 @@ static int rcar_gen4_pcie_host_init(struct dw_pcie_rp *pp)
 	val |= MSI_CTRL_INT;
 	writel(val, rcar->base + PCIEINTSTS0EN);
 
+	writel(0xffff, rcar->base + PCIEINTXSTSEN);
+
 	msleep(PCIE_T_PVPERL_MS);	/* pe_rst requires 100msec delay */
 
 	gpiod_set_value_cansleep(dw->pe_rst, 0);
@@ -332,15 +337,31 @@ static const struct dw_pcie_host_ops rcar_gen4_pcie_host_ops = {
 	.deinit = rcar_gen4_pcie_host_deinit,
 };
 
+static irqreturn_t rcar_gen4_pcie_irq(int irq, void *data)
+{
+	struct rcar_gen4_pcie *rcar = data;
+	u32 sts = readl(rcar->base + PCIEINTXSTS);
+	writel(sts, rcar->base + PCIEINTXSTSCLR);
+	return IRQ_HANDLED;
+}
+
 static int rcar_gen4_add_dw_pcie_rp(struct rcar_gen4_pcie *rcar)
 {
 	struct dw_pcie_rp *pp = &rcar->dw.pp;
+	int ret, irq;
 
 	if (!IS_ENABLED(CONFIG_PCIE_RCAR_GEN4_HOST))
 		return -ENODEV;
 
 	pp->num_vectors = MAX_MSI_IRQS;
 	pp->ops = &rcar_gen4_pcie_host_ops;
+
+	irq = platform_get_irq_byname(rcar->pdev, "app");	// FIXME
+	if (irq < 0)
+		return ret;
+	ret = request_irq(irq, rcar_gen4_pcie_irq, IRQF_SHARED, "rcar-gen4", rcar);
+	if (ret < 0)
+		return ret;
 
 	return dw_pcie_host_init(pp);
 }

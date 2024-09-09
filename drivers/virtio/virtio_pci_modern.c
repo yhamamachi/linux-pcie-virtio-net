@@ -641,6 +641,7 @@ static int vp_modern_find_vqs(struct virtio_device *vdev, unsigned int nvqs,
 	struct virtqueue *vq;
 	int rc = vp_find_vqs(vdev, nvqs, vqs, vqs_info, desc);
 
+printk("%s:%d %d\n", __func__, __LINE__, rc);
 	if (rc)
 		return rc;
 

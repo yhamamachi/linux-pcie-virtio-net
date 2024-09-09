@@ -29,7 +29,10 @@ case "$1" in
     else
         echo "This device is root complex"
         # ifconfig eth1 mtu 4082
-        ifconfig eth1 192.168.10.1 up
+        DEV=eth0
+        ifconfig eth1 2>&1 > /dev/null
+        if [ $? -eq 0 ]; then DEV=eth1; fi
+        ifconfig $DEV 192.168.10.1 up
         sleep 1s
         ping 192.168.10.22 -c 5 -s 64
     fi

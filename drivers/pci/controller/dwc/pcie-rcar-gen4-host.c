@@ -50,6 +50,8 @@ static int rcar_gen4_pcie_host_init(struct dw_pcie_rp *pp)
 		writel(val, rcar->base + PCIEINTSTS0EN);
 	}
 
+	writel(0xffff, rcar->base + PCIEINTXSTSEN);
+
 	msleep(100);	/* pe_rst requires 100msec delay */
 
 	gpiod_set_value_cansleep(dw->pe_rst, 0);
@@ -61,14 +63,34 @@ static const struct dw_pcie_host_ops rcar_gen4_pcie_host_ops = {
 	.host_init = rcar_gen4_pcie_host_init,
 };
 
+
+static irqreturn_t rcar_gen4_pcie_irq(int irq, void *data)
+{
+	struct rcar_gen4_pcie *rcar = data;
+	u32 sts = readl(rcar->base + PCIEINTXSTS);
+
+	writel(sts, rcar->base + PCIEINTXSTSCLR);
+
+	return IRQ_HANDLED;
+}
+
 static int rcar_gen4_add_dw_pcie_rp(struct rcar_gen4_pcie *rcar,
 				   struct platform_device *pdev)
 {
 	struct dw_pcie *dw = &rcar->dw;
 	struct dw_pcie_rp *pp = &dw->pp;
+	int ret, irq;
 
 	pp->num_vectors = MAX_MSI_IRQS;
 	pp->ops = &rcar_gen4_pcie_host_ops;
+
+	irq = platform_get_irq_byname(pdev, "app");	// FIXME
+	if (irq < 0)
+		return ret;
+
+	ret = request_irq(irq, rcar_gen4_pcie_irq, IRQF_SHARED, "rcar-gen4", rcar);
+	if (ret < 0)
+		return ret;
 
 	return dw_pcie_host_init(pp);
 }

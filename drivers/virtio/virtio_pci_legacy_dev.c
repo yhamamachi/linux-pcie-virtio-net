@@ -197,6 +197,9 @@ bool vp_legacy_get_queue_enable(struct virtio_pci_legacy_device *ldev,
 				u16 index)
 {
 	iowrite16(index, ldev->ioaddr + VIRTIO_PCI_QUEUE_SEL);
+printk("%s:%d index = %d, ioport = %lx, offs = %x, val = %x\n", __func__, __LINE__,
+	index, (unsigned long)ldev->ioaddr, VIRTIO_PCI_QUEUE_PFN,
+	ioread32(ldev->ioaddr + VIRTIO_PCI_QUEUE_PFN));
 	return ioread32(ldev->ioaddr + VIRTIO_PCI_QUEUE_PFN);
 }
 EXPORT_SYMBOL_GPL(vp_legacy_get_queue_enable);

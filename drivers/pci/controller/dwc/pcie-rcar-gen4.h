@@ -19,12 +19,15 @@
 #define  DEVICE_TYPE_RC		BIT(4)
 
 #define PCIEINTSTS0		0x0084
+#define PCIEINTXSTS		0x0090
 #define PCIEINTSTS0EN		0x0310
 #define  MSI_CTRL_INT		BIT(26)
 #define  SMLH_LINK_UP		BIT(7)
 #define  RDLH_LINK_UP		BIT(6)
 #define PCIEDMAINTSTSEN		0x0314
 #define  PCIEDMAINTSTSEN_INIT	GENMASK(15, 0)
+#define PCIEINTXSTSEN		0x0318
+#define PCIEINTXSTSCLR		0x0348
 
 struct rcar_gen4_pcie {
 	enum dw_pcie_device_mode mode;

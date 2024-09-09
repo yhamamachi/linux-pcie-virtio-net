@@ -132,6 +132,7 @@ static int vp_request_msix_vectors(struct virtio_device *vdev, int nvectors,
 
 	err = pci_alloc_irq_vectors_affinity(vp_dev->pci_dev, nvectors,
 					     nvectors, flags, desc);
+printk("%s:%d %d\n", __func__, __LINE__, err);
 	if (err < 0)
 		goto error;
 	vp_dev->msix_enabled = 1;
@@ -143,6 +144,7 @@ static int vp_request_msix_vectors(struct virtio_device *vdev, int nvectors,
 	err = request_irq(pci_irq_vector(vp_dev->pci_dev, v),
 			  vp_config_changed, 0, vp_dev->msix_names[v],
 			  vp_dev);
+printk("%s:%d %d\n", __func__, __LINE__, err);
 	if (err)
 		goto error;
 	++vp_dev->msix_used_vectors;
@@ -162,6 +164,7 @@ static int vp_request_msix_vectors(struct virtio_device *vdev, int nvectors,
 		err = request_irq(pci_irq_vector(vp_dev->pci_dev, v),
 				  vp_vring_interrupt, 0, vp_dev->msix_names[v],
 				  vp_dev);
+printk("%s:%d %d\n", __func__, __LINE__, err);
 		if (err)
 			goto error;
 		++vp_dev->msix_used_vectors;
@@ -368,6 +371,7 @@ static int vp_find_vqs_intx(struct virtio_device *vdev, unsigned int nvqs,
 
 	err = request_irq(vp_dev->pci_dev->irq, vp_interrupt, IRQF_SHARED,
 			dev_name(&vdev->dev), vp_dev);
+printk("%s:%d irq = %d, err = %d\n", __func__, __LINE__, vp_dev->pci_dev->irq, err);
 	if (err)
 		goto out_del_vqs;
 
@@ -383,10 +387,12 @@ static int vp_find_vqs_intx(struct virtio_device *vdev, unsigned int nvqs,
 				     VIRTIO_MSI_NO_VECTOR);
 		if (IS_ERR(vqs[i])) {
 			err = PTR_ERR(vqs[i]);
+printk("%s:%d %d\n", __func__, __LINE__, err);
 			goto out_del_vqs;
 		}
 	}
 
+printk("%s:%d %d\n", __func__, __LINE__, err);
 	return 0;
 out_del_vqs:
 	vp_del_vqs(vdev);
@@ -413,6 +419,7 @@ int vp_find_vqs(struct virtio_device *vdev, unsigned int nvqs,
 	if (!(to_vp_device(vdev)->pci_dev->irq))
 		return err;
 	/* Finally fall back to regular interrupts. */
+printk("%s:%d %d\n", __func__, __LINE__, err);
 	return vp_find_vqs_intx(vdev, nvqs, vqs, callbacks, names, ctx);
 }
 

@@ -3690,10 +3690,12 @@ static int virtnet_find_vqs(struct virtnet_info *vi)
 	 */
 	total_vqs = vi->max_queue_pairs * 2 +
 		    virtio_has_feature(vi->vdev, VIRTIO_NET_F_CTRL_VQ);
-
+printk("%s:%d total_vqs = %d\n", __func__, __LINE__, total_vqs);
 	net_vqs = total_vqs;
 
 	// FIXME: should move to virtio-rdma when alloc on demand is available
+printk("%s:%d max_cq = %d, max_qp = %d\n", __func__, __LINE__,
+	vi->max_cq, vi->max_qp);
 	total_vqs += vi->max_cq + vi->max_qp * 2;
 
 	/* Allocate space for find_vqs parameters */
@@ -3753,6 +3755,7 @@ static int virtnet_find_vqs(struct virtnet_info *vi)
 
 	ret = virtio_find_vqs_ctx(vi->vdev, total_vqs, vqs, callbacks,
 				  names, ctx, NULL);
+printk("%s:%d %d\n", __func__, __LINE__, ret);
 	if (ret)
 		goto err_find;
 
@@ -3860,10 +3863,12 @@ static int init_vqs(struct virtnet_info *vi)
 
 	/* Allocate send & receive queues */
 	ret = virtnet_alloc_queues(vi);
+printk("%s:%d %d\n", __func__, __LINE__, ret);
 	if (ret)
 		goto err;
 
 	ret = virtnet_find_vqs(vi);
+printk("%s:%d %d\n", __func__, __LINE__, ret);
 	if (ret)
 		goto err_free;
 
@@ -4254,6 +4259,7 @@ static int virtnet_probe(struct virtio_device *vdev)
 
 	/* Allocate/initialize the rx/tx queues, and invoke find_vqs */
 	err = init_vqs(vi);
+printk("%s:%d %d\n", __func__, __LINE__, err);
 	if (err)
 		goto free;
 
@@ -4270,6 +4276,7 @@ static int virtnet_probe(struct virtio_device *vdev)
 		vi->failover = net_failover_create(vi->dev);
 		if (IS_ERR(vi->failover)) {
 			err = PTR_ERR(vi->failover);
+printk("%s:%d %d\n", __func__, __LINE__, err);
 			goto free_vqs;
 		}
 	}
@@ -4284,6 +4291,7 @@ static int virtnet_probe(struct virtio_device *vdev)
 	if (err) {
 		pr_debug("virtio_net: registering device failed\n");
 		rtnl_unlock();
+printk("%s:%d %d\n", __func__, __LINE__, err);
 		goto free_failover;
 	}
 
@@ -4305,6 +4313,7 @@ static int virtnet_probe(struct virtio_device *vdev)
 			pr_debug("virtio_net: setting MAC address failed\n");
 			rtnl_unlock();
 			err = -EINVAL;
+printk("%s:%d %d\n", __func__, __LINE__, err);
 			goto free_unregister_netdev;
 		}
 	}
@@ -4323,6 +4332,7 @@ static int virtnet_probe(struct virtio_device *vdev)
 	err = virtnet_cpu_notif_add(vi);
 	if (err) {
 		pr_debug("virtio_net: registering cpu notifier failed\n");
+printk("%s:%d %d\n", __func__, __LINE__, err);
 		goto free_adev;
 	}
 

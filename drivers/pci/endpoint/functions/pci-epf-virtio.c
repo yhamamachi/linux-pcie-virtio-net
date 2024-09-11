@@ -2,6 +2,7 @@
 /*
  * Helpers to implement PCIe virtio EP function.
  */
+#include <linux/delay.h>
 #include <linux/kthread.h>
 #include <linux/virtio_config.h>
 #include <linux/virtio_pci.h>
@@ -270,10 +271,12 @@ err_out:
 	return err;
 }
 
+#define NUM_TO_SLEEP_COUNT	10000
 static void epf_virtio_monitor_qnotify(struct epf_virtio *evio)
 {
 	const u16 qn_default = evio->nvq;
 	u16 tmp;
+	int to_sleep_count = NUM_TO_SLEEP_COUNT;
 
 	/*
 	 * Since there is no way to synchronize between the host and EP functions,
@@ -281,9 +284,16 @@ static void epf_virtio_monitor_qnotify(struct epf_virtio *evio)
 	 */
 	while (evio->running) {
 		tmp = epf_virtio_cfg_read16(evio, VIRTIO_PCI_QUEUE_NOTIFY);
-		if (tmp == qn_default)
+		if (tmp == qn_default) {
+			if (!to_sleep_count) {
+				usleep_range(900, 1000);
+				continue;
+			}
+			to_sleep_count--;
 			continue;
+		}
 
+		to_sleep_count = NUM_TO_SLEEP_COUNT;
 		epf_virtio_cfg_write16(evio, VIRTIO_PCI_QUEUE_NOTIFY,
 				       qn_default);
 

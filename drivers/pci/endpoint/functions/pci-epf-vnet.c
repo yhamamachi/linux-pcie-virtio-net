@@ -3588,7 +3588,7 @@ static int epf_vnet_vdev_roce_tx_handler(struct epf_vnet *vnet, struct virtqueue
 static int epf_vnet_setup_common(struct epf_vnet *vnet, struct device *dev)
 {
 	int err;
-
+#if 0
 	vnet->features =
 		BIT(VIRTIO_F_ACCESS_PLATFORM) | BIT(VIRTIO_NET_F_MTU) |
 		BIT(VIRTIO_NET_F_STATUS) |
@@ -3601,7 +3601,18 @@ static int epf_vnet_setup_common(struct epf_vnet *vnet, struct device *dev)
 		BIT(VIRTIO_NET_F_GUEST_UFO) |
 		/* The control queue is just used for linkup announcement. */
 		BIT(VIRTIO_NET_F_CTRL_VQ) | BIT(VIRTIO_NET_F_ROCE);
-
+#else
+	vnet->features =
+		BIT(VIRTIO_F_ACCESS_PLATFORM) | BIT(VIRTIO_NET_F_MTU) |
+		BIT(VIRTIO_NET_F_STATUS) |
+		/* Following features are to skip any of checking and offloading, Like a
+		 * transmission between virtual machines on same system. Details are on
+		 * section 5.1.5 in virtio specification.
+		 */
+		BIT(VIRTIO_NET_F_GUEST_CSUM) |
+		/* The control queue is just used for linkup announcement. */
+		BIT(VIRTIO_NET_F_CTRL_VQ) | BIT(VIRTIO_NET_F_ROCE);
+#endif
 	vnet->vnet_cfg.max_virtqueue_pairs = 1;
 	vnet->vnet_cfg.status = 0;
 	/* GSI is used 1 qps and cq */

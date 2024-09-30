@@ -3618,7 +3618,7 @@ static int epf_vnet_setup_common(struct epf_vnet *vnet, struct device *dev)
 	/* GSI is used 1 qps and cq */
 	vnet->vnet_cfg.max_rdma_qps = EPF_VNET_RDMA_MAX_QP;
 	vnet->vnet_cfg.max_rdma_cqs = EPF_VNET_RDMA_MAX_CQ;
-	vnet->vnet_cfg.mtu = 4000;//PAGE_SIZE - ETH_HLEN;
+	vnet->vnet_cfg.mtu = 4050;//PAGE_SIZE - ETH_HLEN;
 
 	memcpy(&vnet->vdev_vnet_cfg, &vnet->vnet_cfg, sizeof(vnet->vnet_cfg));
 

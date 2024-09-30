@@ -547,7 +547,7 @@ static int epf_vnet_setup_common(struct epf_vnet *vnet)
 #endif
 	vnet->vnet_cfg.max_virtqueue_pairs = 1;
 	vnet->vnet_cfg.status = 0;
-	vnet->vnet_cfg.mtu = 4000;//PAGE_SIZE - ETH_HLEN;
+	vnet->vnet_cfg.mtu = 4050;//PAGE_SIZE - ETH_HLEN;
 
 	memcpy(&vnet->vdev_vnet_cfg, &vnet->vnet_cfg, sizeof(vnet->vnet_cfg));
 

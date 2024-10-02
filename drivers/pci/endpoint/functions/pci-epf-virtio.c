@@ -115,7 +115,7 @@ static void __iomem *epf_virtio_alloc_bar(struct pci_epf *epf, size_t size)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	config_bar->flags |= PCI_BASE_ADDRESS_MEM_TYPE_64;
+	config_bar->flags |= PCI_BASE_ADDRESS_MEM_TYPE_64 | PCI_BASE_ADDRESS_MEM_PREFETCH;
 	err = pci_epc_set_bar(epf->epc, epf->func_no, epf->vfunc_no,
 			      config_bar);
 	if (err) {

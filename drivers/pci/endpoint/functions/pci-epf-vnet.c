@@ -515,7 +515,7 @@ static void epf_vnet_raise_irq_handler(struct work_struct *work)
 	struct pci_epf *epf = vnet->evio.epf;
 
 	pci_epc_raise_irq(epf->epc, epf->func_no, epf->vfunc_no,
-			  PCI_EPC_IRQ_INTX, 0);
+			  PCI_IRQ_INTX, 0);
 }
 
 static int epf_vnet_setup_common(struct epf_vnet *vnet)

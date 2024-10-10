@@ -13,7 +13,7 @@
 
 #include "pci-epf-virtio.h"
 
-static int virtio_queue_size = 0x100;
+static int virtio_queue_size = 0x400;
 module_param(virtio_queue_size, int, 0444);
 MODULE_PARM_DESC(virtio_queue_size, "A length of virtqueue");
 

@@ -656,9 +656,7 @@ static bool epf_vnet_vdev_vq_notify(struct virtqueue *vq)
 }
 
 static int epf_vnet_vdev_find_vqs(struct virtio_device *vdev, unsigned int nvqs,
-				  struct virtqueue *vqs[],
-				  vq_callback_t *callback[],
-				  const char *const names[], const bool *ctx,
+				  struct virtqueue *vqs[], struct virtqueue_info *vq_info,
 				  struct irq_affinity *desc)
 {
 	struct epf_vnet *vnet = vdev_to_vnet(vdev);
@@ -673,16 +671,16 @@ static int epf_vnet_vdev_find_vqs(struct virtio_device *vdev, unsigned int nvqs,
 		struct virtqueue *vq;
 		const struct vring *vring;
 
-		if (!names[i]) {
+		if (!vq_info[i].name) {
 			vqs[i] = NULL;
 			continue;
 		}
 
 		vq = vring_create_virtqueue(qidx++, virtio_queue_size,
 					    VIRTIO_PCI_VRING_ALIGN, vdev, true,
-					    false, ctx ? ctx[i] : false,
+					    false, vq_info[i].ctx ? vq_info[i].ctx : false,
 					    epf_vnet_vdev_vq_notify,
-					    callback[i], names[i]);
+					    vq_info[i].callback, vq_info[i].name);
 		if (!vq) {
 			err = -ENOMEM;
 			goto err_del_vqs;
@@ -705,7 +703,7 @@ static int epf_vnet_vdev_find_vqs(struct virtio_device *vdev, unsigned int nvqs,
 
 err_del_vqs:
 	for (; i >= 0; i--) {
-		if (!names[i])
+		if (!vq_info[i].name)
 			continue;
 
 		if (!vqs[i])

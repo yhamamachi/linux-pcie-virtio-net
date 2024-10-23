@@ -7136,3 +7136,6 @@ CONFIG_ARCH_USE_MEMTEST=y
 #
 # end of Rust hacking
 # end of Kernel hacking
+
+CONFIG_EXTRA_FIRMWARE="rcar_gen4_pcie.bin"
+CONFIG_EXTRA_FIRMWARE_DIR="./"

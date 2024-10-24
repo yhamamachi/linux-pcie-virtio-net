@@ -759,10 +759,10 @@
 			      <0 0xe65d6200 0 0x0e00>, <0 0xe65d7000 0 0x0400>,
 			      <0 0xfe000000 0 0x400000>;
 			reg-names = "dbi", "dbi2", "atu", "dma", "app", "phy", "config";
-			interrupts = <GIC_SPI 449 IRQ_TYPE_LEVEL_HIGH>,
+			interrupts = <GIC_SPI 455 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 450 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 451 IRQ_TYPE_LEVEL_HIGH>,
-				     <GIC_SPI 455 IRQ_TYPE_LEVEL_HIGH>;
+				     <GIC_SPI 449 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "msi", "dma", "sft_ce", "app";
 			clocks = <&cpg CPG_MOD 624>, <&pcie0_clkref>;
 			clock-names = "core", "ref";

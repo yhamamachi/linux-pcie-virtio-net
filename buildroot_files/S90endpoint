@@ -9,7 +9,7 @@ case "$1" in
     sysctl net.core.wmem_max=1048576
 
     echo performance > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
-    echo performance > /sys/devices/system/cpu/cpufreq/policy4/scaling_governor    
+    echo performance > /sys/devices/system/cpu/cpufreq/policy4/scaling_governor
 
     echo "Starting Endpoint function..."
     mount -t configfs none /sys/kernel/config
@@ -18,15 +18,20 @@ case "$1" in
     if [ "$(ls controllers/)" != "" ]; then
         FUNCTION_NAME=pci_epf_vnet
         #FUNCTION_NAME=pci_epf_virtio_net
+        #FUNCTION_NAME=pci_epf_ntb
         if [[ ! -e functions/$FUNCTION_NAME ]]; then
             FUNCTION_NAME=pci_epf_virtio_net
         fi
         mkdir -p functions/$FUNCTION_NAME/func1
-        # echo 32 > functions/$FUNCTION_NAME/func1/msi_interrupts
+        # echo 16 > functions/$FUNCTION_NAME/func1/msi_interrupts
+        echo 32 > functions/$FUNCTION_NAME/func1/msi_interrupts
         ln -s functions/$FUNCTION_NAME/func1 controllers/e65d0000.pcie-ep/ && sleep 1
         echo 1 > controllers/e65d0000.pcie-ep/start && sleep 1
         # ifconfig eth0 mtu 4082
-        ifconfig eth0 192.168.10.22 up
+        DEV=eth0
+        ifconfig eth3 2>&1 > /dev/null
+        if [ $? -eq 0 ]; then DEV=eth3; fi
+        ifconfig $DEV 192.168.10.22 up
         # mkdir /sys/kernel/config/rdma_cm/virtio_rdma_0
         echo "iperf3 is running in servermode (cmd: iperf3 -s)"
         iperf3 -s > /dev/null &
@@ -34,6 +39,8 @@ case "$1" in
         echo "This device is root complex"
         # ifconfig eth1 mtu 4082
         DEV=eth0
+        ifconfig eth3 2>&1 > /dev/null
+        if [ $? -eq 0 ]; then DEV=eth3; fi
         ifconfig eth1 2>&1 > /dev/null
         if [ $? -eq 0 ]; then DEV=eth1; fi
         ifconfig $DEV 192.168.10.1 up

@@ -29,6 +29,8 @@ case "$1" in
         echo 1 > controllers/e65d0000.pcie-ep/start && sleep 1
         # ifconfig eth0 mtu 4082
         DEV=eth0
+        ifconfig eth1 2>&1 > /dev/null
+        if [ $? -eq 0 ]; then DEV=eth1; fi
         ifconfig eth3 2>&1 > /dev/null
         if [ $? -eq 0 ]; then DEV=eth3; fi
         ifconfig $DEV 192.168.10.22 up
@@ -39,10 +41,10 @@ case "$1" in
         echo "This device is root complex"
         # ifconfig eth1 mtu 4082
         DEV=eth0
-        ifconfig eth3 2>&1 > /dev/null
-        if [ $? -eq 0 ]; then DEV=eth3; fi
         ifconfig eth1 2>&1 > /dev/null
         if [ $? -eq 0 ]; then DEV=eth1; fi
+        ifconfig eth3 2>&1 > /dev/null
+        if [ $? -eq 0 ]; then DEV=eth3; fi
         ifconfig $DEV 192.168.10.1 up
         sleep 1s
         ping 192.168.10.22 -c 5 -s 64

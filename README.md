@@ -7,8 +7,7 @@
     - Based on https://github.com/ShunsukeMie/linux/tree/release20230922
 - renesas-devel base
   - https://github.com/yhamamachi/linux-pcie-virtio-net/tree/renesas-devel-2023-06-26-v6.4-wip
-  - https://github.com/yhamamachi/linux-pcie-virtio-net/tree/renesas-devel-2024-07-15-v6.10-wip
-
+  - https://github.com/yhamamachi/linux-pcie-virtio-net/tree/renesas-devel-2024-09-16-v6.11-wip
 ## Buildroot
 
 ### First build

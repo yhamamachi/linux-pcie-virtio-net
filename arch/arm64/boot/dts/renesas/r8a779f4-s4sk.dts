@@ -244,3 +244,11 @@
 &ufs30_clk {
 	clock-frequency = <38400000>;
 };
+
+&pciec0 {
+	status = "okay";
+};
+&pciec1_ep {
+	status = "okay";
+};
+
